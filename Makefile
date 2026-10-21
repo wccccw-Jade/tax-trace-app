@@ -1,0 +1,26 @@
+PYTHON := .venv/bin/python
+.PHONY: install db db-stop db-status db-logs migrate import audit test dev build
+install:
+	$(PYTHON) -m pip install -r requirements.txt
+	cd frontend && npm install
+
+db:
+	docker compose up -d --wait
+db-stop:
+	docker compose stop db
+db-status:
+	docker compose ps db
+db-logs:
+	docker compose logs --tail=100 db
+migrate:
+	.venv/bin/alembic upgrade head
+import:
+	$(PYTHON) -m backend.cli import
+audit:
+	$(PYTHON) -m backend.cli audit --output var/audit.json
+test:
+	$(PYTHON) -m pytest -q
+dev:
+	$(PYTHON) scripts/dev.py
+build:
+	cd frontend && npm run build

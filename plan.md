@@ -169,16 +169,16 @@ The role switcher sets the acting identity on the server in a clearly labeled de
 
 - **Backend:** FastAPI + Pydantic (Python, which also runs the audit scripts and the import). `main.py` is the entry point.
 - **Frontend:** React + TypeScript + Vite, built and served by the same FastAPI process from one origin.
-- **Storage:** SQLite on a persistent disk, through SQLAlchemy, with attachments on the same disk. Operating rules:
-  - WAL mode, `foreign_keys=ON`, and a busy timeout.
-  - Short write transactions; never hold a write lock while a request is waiting.
-  - Every write checks the expected revision (see the rules for writes below).
-  - A scheduled backup copies the database (using SQLite's online backup) and the attachments off the volume. Restore is tested once before submission.
+- **Storage:** PostgreSQL from day one, accessed through SQLAlchemy. Run PostgreSQL locally in Docker Compose (no native PostgreSQL installation); use Heroku Postgres when deploying. Attachments use local storage during development and private object storage (such as S3) on Heroku. Heroku's dyno filesystem is used only for temporary files, never durable records.
+  - Configure the database through `DATABASE_URL` and the file-storage backend through environment variables. Local and hosted databases stay separate; both use the same schema migrations and packet importer.
+  - Keep write transactions short, enforce database constraints, and check expected revisions in both environments.
+  - Use Alembic schema migrations from the initial setup. At deployment, apply them to Heroku Postgres and import the supplied packet; local test data does not need to be transferred. Add and test the object-storage adapter before deployment.
+  - Configure database backups and attachment recovery; test restoration before submission.
 - **Live updates:** each client polls for changes every few seconds using a revision cursor. Server-sent events and presence indicators are out of scope.
-- **Hosting:** one service with a persistent volume, so pick a host that offers one (for example a Fly.io volume or a Render disk, which is a paid feature). Only the invented fixture is deployed.
+- **Hosting:** Heroku. Build and test locally first; begin deployment only after a working prototype is ready. FastAPI serves the built React frontend and API from one origin. At deployment time, add the Heroku build/start configuration, bind the server to the provided `PORT`, configure environment variables, and verify that saved records and attachments survive restarts and redeployments. Only the invented fixture is deployed.
 - **Tests:** pytest for import, permissions, sign-off invalidation, conflicts and checks. A single Playwright smoke test of the main demo story only if time allows.
 
-Tradeoff to state in the video: SQLite on a single instance is enough for a few people working at once on one return. A multi-firm product would need Postgres and pushed updates. That would be a real migration (moving the data, database-specific behavior, retesting under concurrent load), not a configuration change.
+Tradeoff to state in the video: PostgreSQL in both environments avoids a later database-engine migration and keeps database behavior consistent. Local development needs a PostgreSQL service, but hosting is still deferred until the prototype is ready. Polling stays the same in both environments; push updates are not needed for this prototype.
 
 ### Entities
 
@@ -253,11 +253,11 @@ Assumes about **10 working days** to submission. The order puts thin coverage of
 ### Day 0–1: audit and foundation
 
 - [ ] Finish the audit scripts and the leads in section 4. Freeze the error list that drives the demo.
-- [ ] Repo setup: `.gitignore`, backend and frontend skeletons, a single run command.
+- [x] Repo setup: `.gitignore`, backend and frontend skeletons, local PostgreSQL via Docker Compose, `DATABASE_URL` configuration, Alembic migrations, and documented startup commands.
 - [ ] Import the packet unmodified; build claims, evidence edges and the document index; run the locator layers and report the unresolved rate.
-- [ ] Build the formula registry and check each formula against v3.
-- [ ] Role switcher, server-side permissions and masking from the start.
-- [ ] Deploy the empty app to the host on day 1, so hosting problems show up early.
+- [x] Build the initial formula registry and check each formula against v3 (11 explicit formulas; see `docs/day-0-1-status.md`).
+- [x] Role switcher, server-side permissions and masking from the start (verified through live local API checks).
+- [x] Build and test locally; keep database and storage settings environment-configurable. Defer Heroku setup until the working prototype is ready. TypeScript/Vite build and local HTTP smoke checks passed; visual browser review remains pending.
 
 ### Day 2–3, Story A: "Trace and correct" (E1 sweep interest)
 
@@ -299,6 +299,7 @@ Use a requirement checklist (one row per brief bullet → screen → working yes
 ### Day 9: harden and write
 
 - [ ] Tests for import integrity, masking, self-review block (preparer vs reviewer activity), sign-off staleness, stale-write conflict, snapshot immutability per submission, readiness inheritance for derived claims, registry formulas reproducing v3, and the computation basis labels.
+- [ ] Once the local prototype is ready, deploy to Heroku with Postgres and private object storage; verify the app link, role switching, and persistence across restart/redeployment.
 - [ ] Backup and restore drill for the database and attachments.
 - [ ] Keyboard, focus and labeled statuses; empty and error states; sales detail stays fast.
 - [ ] One-page core idea and data model (section 2 plus the entity table).
@@ -319,10 +320,17 @@ If time runs short, cut depth, never breadth. Keep every capability working simp
 - **No recomputation engine:** exact arithmetic only for a small formula registry; everything else is labeled `affected` and the tax effect is one estimate in the summary. Each line is `engine`, `recomputed`, `affected` or `unresolved`. Filing on estimates requires an explicit partner decision.
 - **Three-part status instead of one label:** separating evidence, checks and review lets a claim be contradicted and stale at once, and lets a client statement support a verified conclusion.
 - **Relational store with an evidence edge table**, not a graph database. Append-only audit, not full event sourcing.
-- **SQLite and polling on one instance:** right for one household and a few people working at once. Scaling to many firms would require a planned move to Postgres and pushed updates, not a configuration change.
+- **Local first, then Heroku:** PostgreSQL from day one, locally and on Heroku. Attachments use local storage during development and private object storage when hosted. Polling supports updates in both environments.
 - **Simulated documents behind a renderer and locator interface:** real scans plug in with box anchors.
 - **Simulated e-file and signatures:** recorded against an exact revision and clearly labeled as simulated.
 
 ## 11. Out of scope
 
 Multi-client practice management; real authentication and tenant isolation; email/SMS; real e-file and e-signature; tax-engine recomputation; actually destroying records.
+
+
+### Day 0–1 implementation status
+
+Implementation started October 21, 2026. See [status and verification](docs/day-0-1-status.md), [audit findings](docs/audit-findings.md), and [local setup](README.md).
+
+The Python audit and domain/API tests run. PostgreSQL is managed by Docker Compose; live migrations/import and the database integration test passed. The React production build and local HTTP smoke checks passed; visual browser review remains pending. No cloud deployment was performed. The audit remains open for the listed leads; initial source anchors cover only a subset of values, with manual-anchor API support and its UI still to follow. Unchecked Day 0–1 tasks are not claimed complete.

@@ -1,0 +1,4 @@
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+markers = ["postgres: requires an isolated TEST_DATABASE_URL PostgreSQL database"]
