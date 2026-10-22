@@ -252,9 +252,9 @@ Assumes about **10 working days** to submission. The order puts thin coverage of
 
 ### Day 0–1: audit and foundation
 
-- [ ] Finish the audit scripts and the leads in section 4. Freeze the error list that drives the demo.
+- [x] Finish the Day 0–1 audit: 14 proposed discrepancies, a frozen demo sequence, and documented dispositions for every original lead. Tax judgments remain explicit later-story tasks; see `docs/audit-findings.md`.
 - [x] Repo setup: `.gitignore`, backend and frontend skeletons, local PostgreSQL via Docker Compose, `DATABASE_URL` configuration, Alembic migrations, and documented startup commands.
-- [ ] Import the packet unmodified; build claims, evidence edges and the document index; run the locator layers and report the unresolved rate.
+- [x] Import the packet unmodified; build claims, evidence edges and the document index. Automatic anchors resolve 2,672 / 3,012 values; manual source-selection UI and persisted anchors cover unresolved fields. Original data and manual anchors survive derived-data refresh.
 - [x] Build the initial formula registry and check each formula against v3 (11 explicit formulas; see `docs/day-0-1-status.md`).
 - [x] Role switcher, server-side permissions and masking from the start (verified through live local API checks).
 - [x] Build and test locally; keep database and storage settings environment-configurable. Defer Heroku setup until the working prototype is ready. TypeScript/Vite build and local HTTP smoke checks passed; visual browser review remains pending.
@@ -263,6 +263,8 @@ Assumes about **10 working days** to submission. The order puts thin coverage of
 
 Preparer opens the queue → E1 is shown as contradicted → trace to D28 and D29 in the source drawer → mark D29 as a duplicate with a reason → propose −1,840 → see the estimated effect → reload, and it is still there. A reviewer approves it, and approving one's own work is blocked.
 Covers: trace in both directions, simulated docs, verification, adjustment with original kept, durable saves, separation of duties.
+
+**Implemented October 22, 2026:** persisted document dispositions, reason/evidence-backed correction proposals, verification methods tied to value/source revisions, independent approval/rejection, original and approved values side by side, queue status and an approved-only estimated summary. Migration `0002` applied. PostgreSQL acceptance tests and production frontend build passed. See [Story A walkthrough](docs/day-2-3-status.md). Visual browser review remains unverified because Computer Use permission was not granted.
 
 ### Day 3–4, Story B: "Partner threshold and reopening" (E4 gross receipts)
 
@@ -333,4 +335,4 @@ Multi-client practice management; real authentication and tenant isolation; emai
 
 Implementation started October 21, 2026. See [status and verification](docs/day-0-1-status.md), [audit findings](docs/audit-findings.md), and [local setup](README.md).
 
-The Python audit and domain/API tests run. PostgreSQL is managed by Docker Compose; live migrations/import and the database integration test passed. The React production build and local HTTP smoke checks passed; visual browser review remains pending. No cloud deployment was performed. The audit remains open for the listed leads; initial source anchors cover only a subset of values, with manual-anchor API support and its UI still to follow. Unchecked Day 0–1 tasks are not claimed complete.
+Day 0–1 implementation and automated checks are complete: 14 proposed discrepancies with all initial leads dispositioned, 2,672 automatic source anchors plus a persisted manual-anchor UI, 11 registered formulas, and 10 passing backend tests including PostgreSQL/API checks. TypeScript/Vite build passed. Manual anchor, revision, demo session, original hash and counts survived app/database restarts. Visual browser review is the remaining verification gate: Computer Use permission was not granted, so it is not claimed complete. No cloud deployment was performed.

@@ -27,13 +27,21 @@ def test_packet_integrity_and_all_links(packet):
 def test_audit_rederives_evidence(packet):
     report = run_audit(packet)
     f = {x['id']:x for x in report['findings']}
-    assert len(f) == 11
+    assert len(f) == 14
     assert f['E4']['proposed'] == '151300.00'
     assert f['E5']['proposed'] == '140.00'
     assert f['E8']['proposed'] == '8100'
     assert f['E8']['effect_input']['profit_delta'] == '2590.0'
     assert f['E10']['proposed'] == '12000'
     assert f['E11']['proposed'] == '10500'
+    assert f['E12']['proposed'] == '-60.00'
+    assert f['E12']['new_claim']
+    assert f['E13']['proposed'] == '2172.00'
+    assert f['E13']['tax_effect']['federal'] == '464'
+    assert f['E14']['proposed'] == '6634.00'
+    investigations = {i['lead']:i for i in report['investigations']}
+    assert investigations['Corrected brokerage statement']['status']=='reconciled'
+    assert investigations['S-corporation historical basis']['status']=='reconciled'
     # Source changes must change the finding, not return a canned report.
     clone = deepcopy(packet)
     delattr(clone, '_index')
@@ -77,3 +85,13 @@ def test_sensitive_redaction_covers_strings_and_original_text(packet):
     assert bank['routing'] not in serialized
     assert packet.data['household']['people'][0]['ip_pin'] not in serialized
     assert packet.data['extracted_values'][0]['value'] == '2026-01-12'  # redaction is non-mutating
+
+
+def test_row_scoped_dates_repeated_numbers_and_trips():
+    text='1099-B detail: X1 Alpha 2 sh acquired 2023-01-02 sold 2025-02-03 proceeds 100.00 basis 100.00 wash sale loss disallowed 0.00 short-term covered; X2 Beta 3 sh acquired 2024-01-02 sold 2025-02-03 proceeds 100.00 basis 90.00 wash sale loss disallowed 0.00 long-term covered.'
+    acquired=locate({'field':'X2_acq','text_as_read':'01/02/2024'},text)
+    assert acquired['quote']=='2024-01-02'
+    basis=locate({'field':'X1_basis','text_as_read':'100.00'},text)
+    assert basis['resolved'] and text[basis['start']-6:basis['start']]=='basis '
+    trip=locate({'field':'trip2_destination','text_as_read':'Client'}, '2025-01-01 Client (meeting) 12 mi; 2025-01-02 Client (shoot) 22 mi.')
+    assert trip['quote']=='Client' and trip['start']>30

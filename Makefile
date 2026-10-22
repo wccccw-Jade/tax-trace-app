@@ -1,5 +1,5 @@
 PYTHON := .venv/bin/python
-.PHONY: install db db-stop db-status db-logs migrate import audit test dev build
+.PHONY: install db db-stop db-status db-logs migrate import refresh audit test dev build
 install:
 	$(PYTHON) -m pip install -r requirements.txt
 	cd frontend && npm install
@@ -16,8 +16,11 @@ migrate:
 	.venv/bin/alembic upgrade head
 import:
 	$(PYTHON) -m backend.cli import
+refresh:
+	$(PYTHON) -m backend.cli refresh
 audit:
 	$(PYTHON) -m backend.cli audit --output var/audit.json
+	$(PYTHON) -m scripts.audit.report
 test:
 	$(PYTHON) -m pytest -q
 dev:

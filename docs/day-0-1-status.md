@@ -1,57 +1,50 @@
 # Day 0–1 implementation status
 
-## Implemented and checked
+Implementation and automated verification are complete. The one remaining verification gate is a visual browser walkthrough, blocked by Computer Use permissions. No visual acceptance is claimed and no cloud deployment occurred.
 
-- FastAPI backend and React/TypeScript/Vite foundation, with dependency lockfiles and local startup instructions.
-- PostgreSQL 17 managed by Docker Compose; initial Alembic migration and actual packet import succeeded.
-- Original packet preserved with SHA-256; repeated import is idempotent.
-- 74 documents, 3,012 extracted values, 1,877 return lines across three versions and 11,280 evidence edges. All source/input references resolve.
-- Automatic source locators: 1,206 / 3,012 resolved. Unresolved values are reported. Manual-anchor API validates offsets and expected revisions; the selection UI is not built yet.
-- Independent audit: 11 proposed discrepancies, with source references and tax-effect estimates. Open investigation leads remain listed in `audit-findings.md`.
-- Eleven explicit arithmetic formulas reproduce v3. No formula inference or tax-engine rerun.
-- Demo role sessions, server-side internal-route restrictions, sensitive-value masking and cleared-view logging.
-- React findings queue, document search, role selector and simulated evidence drawer with field highlighting where anchors resolve.
+## Completed
 
-## Verification
+- FastAPI backend, React/TypeScript/Vite frontend, locked dependencies, local startup commands and environment configuration.
+- PostgreSQL 17 managed by Docker Compose; actual migrations and packet import completed.
+- Original packet/hash preserved; 74 documents, 3,012 extracted values, 1,877 version-scoped return lines and 11,280 evidence edges. All references resolve.
+- Automatic source anchors resolve 2,672 / 3,012 values. Lot/trip scopes handle repeated amounts and dates. The other 340 remain explicitly unresolved, with manual anchoring available.
+- Manual source-selection UI: document/page → extracted field → select exact source text → save. Actor, time, quote, revision and audit event persist. Saving an anchor does not verify or approve the value.
+- API conflict and permission checks; sensitive pages require clearance for manual anchoring. Client and administrator tax-preparation restrictions are enforced.
+- Derived-data refresh preserves manual anchors and immutable packet data; the on-screen locator count reflects persisted records.
+- Audit: 14 proposed discrepancies and documented dispositions for all 15 original leads. Meridian M18 is on unextracted page 32; replacement statement usage and S-corporation opening basis are reconciled. Remaining tax judgments are explicit later-story tasks, not assumed answers.
+- Frozen initial demo sequence: E1 duplicate interest; E4 gross receipts/partner threshold; E3 vehicle gift judgment; E12 missing supplemental lot; crypto C6 evidence judgment.
+- Eleven explicit arithmetic formulas reproduce v3; no formula inference or tax-engine rerun.
+- Demo roles, internal-route restrictions, sensitive-value masking and cleared-view audit logging.
 
-- Standalone audit: passed.
-- Backend suite with `TEST_DATABASE_URL`: 8 passed, including actual PostgreSQL import/idempotence.
-- Frontend: Node.js v24.22.0, npm 11.19.1, dependencies installed and `package-lock.json` generated. TypeScript check and Vite production build passed.
-- Live HTTP checks through the frontend dev server: page loads, API proxy works, PostgreSQL ready, 74 documents, 11 findings, cleared staff access, Marcus Bell masking, client internal-access rejection, access-log entries, and manual-anchor stale-revision rejection.
-- Static mount moved after all API routes so the production build does not shadow the manual-anchor endpoint. Route-authorization regression check added.
-- No browser is attached to the agent session, so visual/UI interaction verification is not claimed.
-- Backend/database persistence across a restart has not yet been checked.
+## Verification performed
 
-A TestClient/httpx deprecation warning remains; tests pass.
+- Standalone audit and reproducible Markdown report: passed (`make audit`).
+- PostgreSQL/domain/API suite: **10 passed**, including real import/idempotence, manual save, invalid range, stale revision, clearance restrictions, client denial and preservation during derived-data refresh.
+- TypeScript and Vite production build: passed (`make build`).
+- Local app and PostgreSQL were stopped/restarted. Saved manual anchor, revision, demo session, original hash and import counts survived (`scripts/check_persistence.py prepare/verify`).
+- Original packet unchanged; no corrections or approvals applied.
+- Computer Use inventory found Chrome, but attempting inspection returned **“Computer Use permissions are not granted.”** Visual layout and mouse selection behavior remain unverified. No alternate browser automation was used to bypass that restriction.
+
+The installed TestClient/httpx combination emits a deprecation warning; tests pass.
 
 ## Local use
-
-Node is installed through nvm. If `node` is missing from the terminal PATH:
-
-```sh
-source ~/.nvm/nvm.sh
-nvm use
-```
-
-Then:
 
 ```sh
 make db
 make migrate
 make import
+make refresh
 make dev
 ```
 
 Frontend: http://127.0.0.1:5173  
 API docs: http://127.0.0.1:8000/docs
 
-Use `make db-status`, `make db-logs`, and `make db-stop` to manage PostgreSQL. Data persists in the named Docker volume.
+Select Priya, open **Evidence library**, choose a document/page and one of its extracted fields, then select text in the simulated source and save the anchor. The Swedish interest field (`D36` → `ev-0960`) is a simple example. Reload to inspect the saved quote/actor/time. Marcus sees masking and cannot anchor a page containing masked data. Clients cannot access internal workpaper records.
 
-## Remaining foundation work
+## Remaining gate and next story
 
-- Finish open audit leads and finalize the demo error list.
-- Improve field/date mappings and build manual source-selection UI.
-- Verify the interface visually and persistence across restart.
-- Replay-aware evidence visibility and staff active dates remain unimplemented; no replay endpoint is exposed.
+- Visual browser walkthrough once Computer Use permission is enabled (or user checks it locally).
+- Then Story A: verification methods, original-preserving adjustments and independent reviewer approval.
 
-Verification/adjustment/approval writes, attachments/questions, sign-off invalidation and filing/export workflows belong to subsequent stories. No cloud deployment has occurred.
+Replay, questions/attachments, broader CPA views, sign-off invalidation and filing/export remain later stories. Unresolved anchors and tax judgments continue as real workpaper tasks; they are not silently marked complete.

@@ -44,3 +44,41 @@ class AuditEvent(Base):
     action: Mapped[str] = mapped_column(String(60))
     subject: Mapped[str] = mapped_column(Text)
     at: Mapped[str] = mapped_column(String(40), default=lambda: datetime.now(timezone.utc).isoformat())
+
+class Verification(Base):
+    __tablename__ = 'verifications'
+    id: Mapped[int] = mapped_column(primary_key=True)
+    record_id: Mapped[int] = mapped_column(ForeignKey('records.id'), index=True)
+    actor_id: Mapped[str] = mapped_column(String(30))
+    method: Mapped[str] = mapped_column(String(60))
+    note: Mapped[str] = mapped_column(Text)
+    evidence: Mapped[list] = mapped_column(JSONB)
+    value: Mapped[str] = mapped_column(Text)
+    subject_revision: Mapped[int]
+    fingerprint: Mapped[str] = mapped_column(String(64))
+    at: Mapped[str] = mapped_column(String(40))
+
+class Adjustment(Base):
+    __tablename__ = 'adjustments'
+    id: Mapped[int] = mapped_column(primary_key=True)
+    record_id: Mapped[int] = mapped_column(ForeignKey('records.id'), index=True)
+    actor_id: Mapped[str] = mapped_column(String(30))
+    original_value: Mapped[str] = mapped_column(Text)
+    proposed_value: Mapped[str] = mapped_column(Text)
+    category: Mapped[str] = mapped_column(String(40))
+    reason: Mapped[str] = mapped_column(Text)
+    evidence: Mapped[list] = mapped_column(JSONB)
+    effect: Mapped[dict] = mapped_column(JSONB)
+    status: Mapped[str] = mapped_column(String(30), default='proposed')
+    at: Mapped[str] = mapped_column(String(40))
+
+class AdjustmentReview(Base):
+    __tablename__ = 'adjustment_reviews'
+    id: Mapped[int] = mapped_column(primary_key=True)
+    adjustment_id: Mapped[int] = mapped_column(ForeignKey('adjustments.id'), index=True)
+    actor_id: Mapped[str] = mapped_column(String(30))
+    decision: Mapped[str] = mapped_column(String(20))
+    note: Mapped[str] = mapped_column(Text)
+    evidence: Mapped[list] = mapped_column(JSONB)
+    fingerprint: Mapped[str] = mapped_column(String(64))
+    at: Mapped[str] = mapped_column(String(40))

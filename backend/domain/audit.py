@@ -1,6 +1,7 @@
 """Fixture audit: findings are derived from source text/records, not engine diagnostics."""
 import re
 from decimal import Decimal
+from backend.domain.investigation import investigate
 from backend.domain.formulas import check_registry, tax_effect
 from backend.domain.locators import packet_locators
 
@@ -22,8 +23,8 @@ def run_audit(packet):
     def text(doc):
         return '\n'.join(page['printed_content'] for page in docs[doc]['pages'])
     findings = []
-    def finding(code, title, key, expected, refs, category):
-        observed = D(lines[key]['value'])
+    def finding(code, title, key, expected, refs, category, observed=None):
+        observed = D(lines[key]['value']) if observed is None else D(observed)
         expected = D(expected)
         if observed == expected:
             return
@@ -72,6 +73,28 @@ def run_audit(packet):
     finding('E10', 'Federal estimates do not agree to IRS transcript', 'F1040.26', federal, ['agency:/irs_account_transcript_2025/0'], 'payment')
     ca = sum((D(t['amount']) for t in p['tax_agency_records']['ftb_account']['tax_year_2025_payments']), D(0))
     finding('E11', '2024-designated payment counted toward 2025 California', 'F540NR.72', ca, ['D68','agency:/ftb_account'], 'payment')
+    supplement = text('D31')
+    m18 = re.search(r'M18[^;]*?proceeds ([\d,.]+) basis ([\d,.]+)', supplement)
+    if m18 and not any(l['key'].endswith('.M18') for l in v['lines']):
+        gain = D(m18.group(1).replace(',','').rstrip('.')) - D(m18.group(2).replace(',','').rstrip('.'))
+        finding('E12', 'Supplemental brokerage lot M18 was never extracted', 'F8949.C.M18', gain, ['doc:D31#page32','doc:D31#page1'], 'stcg', observed=0)
+        findings[-1]['tax_effect']['california'] = '0'
+        findings[-1]['california_basis'] = 'Sale after move to Texas; no California-source share identified'
+        findings[-1]['new_claim'] = True
+    call = ' '.join(p['client']['call_notes'][0]['notes'])
+    if '70%' in call and '50%' in call:
+        utilities = (amount(text('D15'), r'Telephone ([\d,.]+)')*D('.70')+amount(text('D15'), r'Internet ([\d,.]+)')*D('.50')).quantize(D('.01'))
+        finding('E13', 'Family phone and internet deducted at full cost', 'SchC.25', utilities, ['call-01','doc:D15#page2'], 'schc_profit')
+        if findings[-1]['id']=='E13':
+            findings[-1]['tax_effect'] = tax_effect(-D(findings[-1]['delta']), 'schc_profit', v['tax_effect_rates'])
+            findings[-1]['effect_input'] = {'profit_delta':str(-D(findings[-1]['delta']))}
+            findings[-1]['support'] = 'Client-stated business percentages; verify before approval'
+    if 'Spotify Family in software is personal' in call:
+        spotify = amount(text('D15'), r'Spotify Family ([\d,.]+)')
+        finding('E14', 'Personal Spotify subscription in business software', 'SchC.27a.1', D(lines['SchC.27a.1']['value'])-spotify, ['call-01','doc:D15#page1'], 'schc_profit')
+        if findings[-1]['id']=='E14':
+            findings[-1]['tax_effect'] = tax_effect(-D(findings[-1]['delta']), 'schc_profit', v['tax_effect_rates'])
+            findings[-1]['effect_input'] = {'profit_delta':str(-D(findings[-1]['delta']))}
     locators = packet_locators(packet)
     edges = packet.edges()
     return {'packet_hash': packet.digest, 'counts': {'documents': len(p['documents']), 'extractions': len(p['extracted_values']),
@@ -80,7 +103,6 @@ def run_audit(packet):
             'unresolved_references': [e for e in edges if not e['resolved']],
             'formula_checks': {v['version']: check_registry(v) for v in p['return_versions']},
             'findings': findings,
-            'open_leads': ['Meridian 250 proceeds discrepancy: locate exact lot', 'California-source wage allocation from D73',
-                           'California AMT not computed', 'Crypto C6 basis/date: assess msg-07 evidence',
-                           'Mixed business use and Spotify: evaluate call-01', 'Historical S corporation basis reconciliation',
-                           'Due diligence and outside filings', 'Theo identity correction belongs to later replay']}
+            'investigations': investigate(packet),
+            'demo_errors': ['E1','E3','E4','E12'],
+            'open_leads': [item['lead'] for item in investigate(packet) if item['status']=='needs_decision']}

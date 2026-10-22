@@ -1,6 +1,6 @@
 # Miraflores workpaper
 
-Day 0–1 foundation for the Okafor–Lindqvist case study. Local development only; no deployment has been performed.
+Day 0–1 foundation and Day 2–3 Story A for the Okafor–Lindqvist case study. Local development only; no deployment has been performed.
 
 ## Prerequisites
 
@@ -8,7 +8,7 @@ Day 0–1 foundation for the Okafor–Lindqvist case study. Local development on
 - Node.js 22.12+ (or Node 24 LTS) and npm for React/Vite.
 - Docker Desktop (running), including Docker Compose. PostgreSQL 17 runs in the `db` container; no native PostgreSQL installation is needed.
 
-Node.js 24 and the frontend dependencies are installed; the TypeScript/Vite production build passed and `frontend/package-lock.json` is available. Docker PostgreSQL is running with the imported packet. All eight backend tests passed previously with PostgreSQL, and live HTTP checks verified the frontend/API connection, role switching, masking and database readiness. Visual browser verification remains pending because no browser is attached to the agent session.
+Node.js 24 and the frontend dependencies are installed; the TypeScript/Vite production build passed and `frontend/package-lock.json` is available. Docker PostgreSQL is running with the imported packet. All 13 backend tests passed with PostgreSQL, and live HTTP checks verified the frontend/API connection, role switching, masking and database readiness. Browser visual verification remains blocked because Computer Use permission is not granted. Saved source anchors, revisions, sessions and import records were verified after restarting both the app and PostgreSQL.
 
 ## Local setup
 
@@ -59,9 +59,36 @@ nvm use
 - Server-side masking for uncleared actors; clients are denied internal workpaper routes. Cleared internal views generate safe access-log entries.
 - React foundation: role selector, independent findings queue, document search and evidence drawer. Requires Node and PostgreSQL to run end to end.
 
+`make refresh` regenerates the derived audit and automatic locators for the existing import without overwriting manual anchors or changing original packet data. `make audit` regenerates the standalone JSON and Markdown findings report.
+
 The demo role selector intentionally permits selecting any fixture identity. It demonstrates authorization after identity selection; it is not authentication for real client data. Do not deploy real records with this mechanism.
 
-Manual source anchoring has an API but no selection UI yet. Replay-aware evidence availability, adjustment/verification workflows and filing are not implemented yet. They remain follow-up tasks in `plan.md`.
+Manual source anchoring is available in the evidence drawer: open a document or page, select an extracted field, select the exact supporting text, then choose **Save source anchor**. The actor, time and revision are recorded; this does not mark the value verified. Automatic mappings locate 2,672 / 3,012 values, with explicit unresolved states for the rest.
+
+The Day 0–1 audit identified 14 proposed discrepancies and documented all original investigation leads. Remaining tax judgments are explicitly assigned to later workpaper workflows, not assumed resolved.
+
+Story A adds evidence-bound verification, correction proposals, independent approval/rejection, document dispositions and an approved-only estimated summary. Replay, broader review management and filing are not implemented yet. They remain follow-up tasks in `plan.md`.
+
+## Story A: trace and correct
+
+Update the schema before running the new workflow:
+
+```sh
+make db
+make migrate
+make dev
+```
+
+1. Select **Priya Raman**. Open **E1: Duplicate Northlake sweep interest** and inspect the D28/D29 evidence links.
+2. Open D29 (via the evidence library or its page's document link). Set its disposition to **duplicate**, original document **D28**, and record the reason. This alone does not change the return.
+3. Reopen E1. Propose corrected value **0**, explain why the interest is already included in D28, and cite D28 and D29. Save the proposal. It persists, but the approved value remains **1,840**.
+4. In the claim panel, record a verification of the **proposed value**, with the firm method and what you checked. Priya cannot approve her own work.
+5. Switch to **Daniel Ortiz**, reopen E1, enter a review conclusion, and approve. You can also reject a proposal without changing the approved return.
+6. The queue shows **Approved correction**. Original engine value **1,840** remains visible, approved workpaper value is **0**, and the summary includes the correction once: estimated federal tax change **−640**, California **−127**.
+
+The summary excludes pending/rejected proposals. Only registered arithmetic is recomputed; unsupported downstream lines retain their original values with an `affected` label. Review/verification history records actors, evidence, times, reasons and status. Changed source revisions invalidate evidence-bound verification. Approvals with a tax effect over $1,000 require an independent partner.
+
+Tests use isolated PostgreSQL schemas and do not pre-approve the correction in your demo database. Full filing readiness, broad review notes, amendment/export and the remaining stories are still pending.
 
 ## Checks
 
@@ -78,9 +105,21 @@ Domain/API tests run without PostgreSQL. The integration test requires a disposa
 TEST_DATABASE_URL=postgresql+psycopg://miraflores:miraflores@localhost:5432/miraflores .venv/bin/python -m pytest -m postgres -q
 ```
 
-Without `TEST_DATABASE_URL`, that test is skipped, not reported as passing. It checks actual PostgreSQL import counts and idempotence. Add the production migration/API persistence check to the local verification once PostgreSQL is available.
+Without `TEST_DATABASE_URL`, that test is skipped, not reported as passing. It checks actual PostgreSQL import counts and idempotence. The PostgreSQL/API checks also cover successful manual-anchor saves, invalid selections, revision conflicts, role restrictions and preservation of manual anchors during refresh.
 
 For a single-origin build, run `make build`, then `.venv/bin/uvicorn main:app --host 127.0.0.1 --port 8000`. FastAPI serves only `frontend/dist`, never the repository or original packet. Restart the backend after building so it detects the build output.
+
+## Persistence check
+
+The local app and database restart check is reproducible:
+
+```sh
+.venv/bin/python scripts/check_persistence.py prepare
+# Restart make dev and the Docker database, then:
+.venv/bin/python scripts/check_persistence.py verify
+```
+
+This saves a manual source anchor for the Swedish interest field and a local demo session, then verifies their revisions/content and packet counts after restart. Temporary check state stays in ignored `var/`.
 
 ## Deployment later
 

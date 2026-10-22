@@ -23,3 +23,21 @@ def import_packet(db, packet):
         db.add(Edge(packet_id=packet.digest, **edge))
     db.flush()
     return {'hash': packet.digest, 'created': True, **report['counts']}
+
+
+def refresh_derived(db, packet):
+    """Refresh audit/automatic anchors without changing originals or manual work."""
+    imported = db.get(PacketImport, packet.digest)
+    if not imported:
+        raise ValueError('Import the packet before refreshing derived data')
+    imported.report = run_audit(packet)
+    locators = packet_locators(packet)
+    updated = 0
+    for record in db.scalars(select(Record).where(Record.packet_id==packet.digest, Record.kind=='extraction')):
+        old = record.payload.get('locator', {})
+        if old.get('layer') != 'manual' and old != locators[record.ref]:
+            record.payload = {**record.payload, 'locator':locators[record.ref]}
+            record.revision += 1
+            updated += 1
+    db.flush()
+    return {'hash':packet.digest, 'automatic_anchors_updated':updated, 'findings':len(imported.report['findings'])}
