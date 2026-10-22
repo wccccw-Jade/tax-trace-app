@@ -67,7 +67,7 @@ Manual source anchoring is available in the evidence drawer: open a document or 
 
 The Day 0–1 audit identified 14 proposed discrepancies and documented all original investigation leads. Remaining tax judgments are explicitly assigned to later workpaper workflows, not assumed resolved.
 
-Story A adds evidence-bound verification, correction proposals, independent approval/rejection, document dispositions and an approved-only estimated summary. Replay, broader review management and filing are not implemented yet. They remain follow-up tasks in `plan.md`.
+Story A adds evidence-bound verification, correction proposals, independent approval/rejection, document dispositions and an approved-only estimated summary. Story B adds a business-income bridge, partner approval and reopening when supporting evidence changes. Broader review management and filing are not implemented yet. They remain follow-up tasks in `plan.md`.
 
 ## Story A: trace and correct
 
@@ -86,9 +86,15 @@ make dev
 5. Switch to **Daniel Ortiz**, reopen E1, enter a review conclusion, and approve. You can also reject a proposal without changing the approved return.
 6. The queue shows **Approved correction**. Original engine value **1,840** remains visible, approved workpaper value is **0**, and the summary includes the correction once: estimated federal tax change **−640**, California **−127**.
 
-The summary excludes pending/rejected proposals. Only registered arithmetic is recomputed; unsupported downstream lines retain their original values with an `affected` label. Review/verification history records actors, evidence, times, reasons and status. Changed source revisions invalidate evidence-bound verification. Approvals with a tax effect over $1,000 require an independent partner.
+The summary excludes pending, rejected and reopened corrections. Only registered arithmetic is recomputed; unsupported downstream lines retain their original values with an `affected` label. Review/verification history records actors, evidence, times, reasons and status. Changed source revisions invalidate evidence-bound verification. Approvals with a tax effect over $1,000 require an independent partner.
 
 Tests use isolated PostgreSQL schemas and do not pre-approve the correction in your demo database. Full filing readiness, broad review notes, amendment/export and the remaining stories are still pending.
+
+## Story B: business income and partner review
+
+Open **Business income** for a plain-language explanation of the duplicated $12,400 payment, source links and the books-to-tax bridge. Priya proposes revenue of $151,300 and verifies the evidence; Helen approves because the estimated tax effect exceeds $1,000. A later D15 disposition change reopens the approval and excludes the correction from the summary until fresh verification and approval. The prior approval stays in history.
+
+See [the complete walkthrough](docs/day-3-4-status.md) for steps and expected values. Changes to cited source anchors also reopen affected approvals. Unrelated corrections remain approved. SE tax and QBI are included once in the combined estimate; their actual return lines remain marked affected.
 
 ## Checks
 

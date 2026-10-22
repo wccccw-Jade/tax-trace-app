@@ -10,8 +10,8 @@ export function DocumentDisposition({trace,actor,onSaved}:{trace:Trace;actor:Act
   async function save(){
     setBusy(true);setError('');
     try{
-      await api('/workpaper/documents/'+trace.ref,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({expected_revision:trace.revision,disposition:state,reason,duplicate_of:state==='duplicate'?original:null})});
-      setMessage('Document disposition saved. Return values change only through a separately approved correction.');onSaved();
+      const saved=await api<{reopened_claims:string[]}>('/workpaper/documents/'+trace.ref,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({expected_revision:trace.revision,disposition:state,reason,duplicate_of:state==='duplicate'?original:null})});
+      setMessage(saved.reopened_claims.length?'Document saved. Approval reopened for '+saved.reopened_claims.join(', ')+'. Check the evidence and request approval again.':'Document disposition saved. Return values change only through a separately approved correction.');onSaved();
     }catch(e){setError((e as Error).message);}finally{setBusy(false);}
   }
   return <form className="workflow-form" onSubmit={e=>{e.preventDefault();void save();}}><h3>Document disposition</h3><label>How this document is used<select value={state} onChange={e=>setState(e.target.value)}>{['unresolved','used','duplicate','superseded','supporting','outside_scope','unextracted_reviewed'].map(s=><option value={s} key={s}>{s.replaceAll('_',' ')}</option>)}</select></label>{state==='duplicate'&&<label>Original document ID<input required value={original} placeholder="For example D28" onChange={e=>setOriginal(e.target.value)}/></label>}<label>Reason<textarea required value={reason} onChange={e=>setReason(e.target.value)} placeholder="Explain the document relationship."/></label><button disabled={busy}>{busy?'Saving…':'Save disposition'}</button>{message&&<p role="status" className="success">{message}</p>}{error&&<p role="alert" className="error">{error}</p>}</form>;

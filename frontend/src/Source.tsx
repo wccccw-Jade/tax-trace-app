@@ -40,8 +40,8 @@ export function Source({trace,actor,onOpen,onSaved}:{trace:Trace;actor:Actor|nul
     if(!selection||trace.revision===null)return;
     setSaving(true);setError('');
     try{
-      await api('/locators/'+encodeURIComponent(trace.ref),{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({expected_revision:trace.revision,start:selection.start,end:selection.end})});
-      setSelection(null);setMessage('Source anchor saved. This locates the evidence; it does not verify the value.');onSaved();
+      const saved=await api<{reopened_claims:string[]}>('/locators/'+encodeURIComponent(trace.ref),{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({expected_revision:trace.revision,start:selection.start,end:selection.end})});
+      setSelection(null);setMessage(saved.reopened_claims.length?'Anchor saved. Approval reopened for '+saved.reopened_claims.join(', ')+'. Check the evidence and request approval again.':'Source anchor saved. This locates the evidence; it does not verify the value.');onSaved();
     }catch(e){setError((e as Error).message);}finally{setSaving(false);}
   }
   const visible=fields.filter(f=>(!unresolved||!f.payload.locator.resolved)&&(f.ref+' '+f.payload.label+' '+f.payload.field).toLowerCase().includes(filter.toLowerCase()));

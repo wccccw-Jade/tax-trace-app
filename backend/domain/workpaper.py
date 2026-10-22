@@ -4,7 +4,7 @@ from decimal import Decimal
 import hashlib
 import json
 from fastapi import HTTPException
-from sqlalchemy import select
+from sqlalchemy import select, func
 from backend.persistence.models import Record, Edge, Verification, Adjustment, AdjustmentReview
 from backend.domain.formulas import D, FORMULAS, check_registry, tax_effect
 
@@ -83,10 +83,10 @@ def adjustments_for(db, record):
     return list(db.scalars(select(Adjustment).where(Adjustment.record_id==record.id).order_by(Adjustment.id.desc())))
 
 
-def current_values(db, record):
+def current_values(db, record, packet=None):
     adjustments=adjustments_for(db,record)
-    pending=next((a for a in adjustments if a.status=='proposed'),None)
-    approved=next((a for a in adjustments if a.status=='approved'),None)
+    pending=next((a for a in adjustments if a.status in {'proposed','reopened'}),None)
+    approved=next((a for a in adjustments if a.status=='approved' and (packet is None or approval_is_current(db,packet,record,a))),None)
     engine=str(record.payload['value'])
     return pending,approved,engine,approved.proposed_value if approved else engine
 
@@ -124,8 +124,49 @@ def estimated_effect(packet, record, proposed, category):
     return {'basis':'estimated','kind':'tax','tax_change':changes,'balance_change':changes,'note':'Measured at v3; thresholds and interactions are not recomputed.'}
 
 
+
+def requires_partner(change):
+    return max(abs(D(value)) for value in change.effect['tax_change'].values())>1000
+
+
+def approval_is_current(db, packet, record, change):
+    review=db.scalar(select(AdjustmentReview).where(AdjustmentReview.adjustment_id==change.id,
+        AdjustmentReview.decision=='approved').order_by(AdjustmentReview.id.desc()))
+    return bool(review and review.fingerprint==fingerprint(db,packet,record,change.proposed_value,review.evidence))
+
+
+def reopen_change(db, packet, record, change, actor_id, source_ref, source_revision, reason):
+    change.status='reopened'
+    event={'adjustment_id':change.id,'source_ref':source_ref,'source_revision':source_revision,
+           'reason':reason,'actor_id':actor_id,'at':now()}
+    record.payload={**record.payload,'review_events':[*record.payload.get('review_events',[]),event]}
+    record.revision+=1
+    from backend.persistence.models import AuditEvent
+    db.add(AuditEvent(actor_id=actor_id,action='approval_reopened',subject=record.ref))
+    return record.ref
+
+
+def reopen_affected_approvals(db, packet, source, actor_id):
+    """Run in the same transaction as an evidence change; preserve prior reviews."""
+    db.flush()
+    changes=list(db.execute(select(Adjustment,Record).join(Record,Adjustment.record_id==Record.id)
+        .where(Record.packet_id==packet.digest,Adjustment.status=='approved')))
+    reopened=[]
+    for change,record in changes:
+        review=db.scalar(select(AdjustmentReview).where(AdjustmentReview.adjustment_id==change.id,
+            AdjustmentReview.decision=='approved').order_by(AdjustmentReview.id.desc()))
+        refs=review.evidence if review else change.evidence
+        if source.ref not in {r.ref for r in scope_records(db,packet,record,refs)}:
+            continue
+        if not approval_is_current(db,packet,record,change):
+            label=source.payload.get('title',source.payload.get('label',source.ref))
+            reason=f"{source.ref} ({label}) changed to revision {source.revision}. Its earlier approval no longer covers the current evidence."
+            reopened.append(reopen_change(db,packet,record,change,actor_id,source.ref,source.revision,reason))
+    db.flush()
+    return reopened
+
 def workflow(db, packet, record):
-    pending,approved,engine,applied=current_values(db,record)
+    pending,approved,engine,applied=current_values(db,record,packet)
     value=pending.proposed_value if pending else applied
     refs=pending.evidence if pending else approved.evidence if approved else []
     checks=[]
@@ -139,7 +180,9 @@ def workflow(db, packet, record):
         for review in db.scalars(select(AdjustmentReview).where(AdjustmentReview.adjustment_id==a.id).order_by(AdjustmentReview.id)):
             reviews.append({'actor_id':review.actor_id,'decision':review.decision,'note':review.note,'at':review.at,
                             'current':review.fingerprint==fingerprint(db,packet,record,a.proposed_value,review.evidence)})
-        changes.append({'id':a.id,'actor_id':a.actor_id,'original_value':a.original_value,'proposed_value':a.proposed_value,'reason':a.reason,'category':a.category,'evidence':a.evidence,'effect':a.effect,'status':a.status,'at':a.at,'reviews':reviews})
+        changes.append({'id':a.id,'actor_id':a.actor_id,'original_value':a.original_value,'proposed_value':a.proposed_value,'reason':a.reason,'category':a.category,'evidence':a.evidence,'effect':a.effect,'status':a.status,'at':a.at,'reviews':reviews,'requires_partner':requires_partner(a),
+                        'approval_current':approval_is_current(db,packet,record,a) if a.status=='approved' else False,
+                        'reopen_events':[e for e in record.payload.get('review_events',[]) if e['adjustment_id']==a.id]})
     try:
         category=category_for(packet,record)
     except HTTPException:
@@ -156,6 +199,10 @@ def projected_summary(db, packet):
     summary={j:dict(base['summary'][j]) for j in ('federal','california')}
     deltas={j:D(0) for j in summary}
     payment_delta={j:D(0) for j in summary}
+    reopened_count=db.scalar(select(func.count()).select_from(Adjustment).join(Record,Adjustment.record_id==Record.id).where(Record.packet_id==packet.digest,Adjustment.status=='reopened'))
+    current=[(a,r) for a,r in rows if approval_is_current(db,packet,r,a)]
+    stale_count=len(rows)-len(current)
+    rows=current
     overrides={}
     for a,r in rows:
         overrides[r.payload['key']]=D(a.proposed_value)
@@ -193,7 +240,7 @@ def projected_summary(db, packet):
         if more<=affected:
             break
         affected.update(more)
-    return {'version':'v3','summary':summary,'approved_adjustments':len(rows),'tax_change':{j:str(deltas[j]) for j in summary},
-            'basis':'Estimated tax summary over v3; only approved adjustments included. No filing readiness implied.',
+    return {'version':'v3','summary':summary,'approved_adjustments':len(rows),'reopened_adjustments':reopened_count+stale_count,'tax_change':{j:str(deltas[j]) for j in summary},
+            'basis':'Estimated tax summary over v3; only current approved adjustments included; reopened corrections are excluded. No filing readiness implied.',
             'changed_lines':[{'key':key,'engine_value':lines[key]['value'],'value':str(values[key]) if key in changed else lines[key]['value'],
                               'basis':'recomputed' if key in changed else 'affected'} for key in sorted(affected)]}

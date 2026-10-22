@@ -22,7 +22,7 @@ async def database_error(request, exc):
 
 @app.get('/api/health')
 def health():
-    return {'status':'ok', 'stage':'day-2-3', 'demo':True}
+    return {'status':'ok', 'stage':'day-3-4', 'demo':True}
 
 @app.get('/api/ready')
 def ready(db: Session = Depends(session)):
@@ -132,8 +132,10 @@ def manual_anchor(extraction_id: str, body: ManualAnchor, actor=Depends(staff), 
                                                  'quote':printed[body.start:body.end], 'actor':actor['id'], 'at':datetime.now(timezone.utc).isoformat()}}
     record.revision += 1
     db.add(AuditEvent(actor_id=actor['id'], action='manual_anchor', subject=extraction_id))
+    from backend.domain.workpaper import reopen_affected_approvals
+    reopened=reopen_affected_approvals(db,packet(),record,actor['id'])
     db.commit()
-    return respond({'ref':record.ref, 'revision':record.revision, 'payload':record.payload}, actor, db, extraction_id)
+    return respond({'ref':record.ref, 'revision':record.revision, 'payload':record.payload, 'reopened_claims':reopened}, actor, db, extraction_id)
 
 
 from backend.workpaper_api import router as workpaper_router

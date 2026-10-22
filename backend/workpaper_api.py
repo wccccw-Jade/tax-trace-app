@@ -1,4 +1,4 @@
-"""Story-A routes. Every mutation locks/checks the subject revision and commits its audit event."""
+"""Workpaper routes. Every mutation locks/checks the subject revision and commits its audit event."""
 from decimal import Decimal
 from typing import Literal
 from fastapi import APIRouter, Depends, HTTPException
@@ -9,7 +9,7 @@ from backend.dependencies import packet, staff, respond, imported
 from backend.persistence.db import session
 from backend.persistence.models import Record, Edge, AuditEvent, Verification, Adjustment, AdjustmentReview
 from backend.domain.workpaper import (now, require_preparation, get_record, evidence_refs, mark_preparer,
-    fingerprint, contributor_ids, adjustments_for, current_values, category_for, estimated_effect, workflow, projected_summary)
+    fingerprint, contributor_ids, adjustments_for, current_values, category_for, estimated_effect, workflow, projected_summary, requires_partner, approval_is_current, reopen_change, reopen_affected_approvals)
 
 router=APIRouter(prefix='/api/workpaper')
 
@@ -76,10 +76,15 @@ def statuses(actor=Depends(staff),db:Session=Depends(session)):
     for change,record in rows:
         if record.ref in result:
             continue
-        reviews=list(db.scalars(select(AdjustmentReview).where(AdjustmentReview.adjustment_id==change.id)))
-        current=all(review.fingerprint==fingerprint(db,packet(),record,change.proposed_value,review.evidence) for review in reviews)
-        result[record.ref]={'status':'stale' if change.status=='approved' and not current else change.status,'proposed_value':change.proposed_value}
+        current=approval_is_current(db,packet(),record,change)
+        result[record.ref]={'status':'reopened' if change.status=='approved' and not current else change.status,'proposed_value':change.proposed_value}
     return respond(result,actor,db,'workpaper-status')
+
+@router.get('/business-income')
+def business(actor=Depends(staff),db:Session=Depends(session)):
+    imported(db)
+    from backend.domain.business import business_income
+    return respond(business_income(db,packet()),actor,db,'business-income')
 
 @router.get('/summary')
 def summary(actor=Depends(staff),db:Session=Depends(session)):
@@ -96,7 +101,7 @@ def verify(ref:str,body:VerificationWrite,actor=Depends(staff),db:Session=Depend
     methods=packet().data['firm']['starter_standards']['verification_types']
     if body.method not in methods:
         raise HTTPException(422,'Unknown firm verification method')
-    pending,approved,engine,applied=current_values(db,record)
+    pending,approved,engine,applied=current_values(db,record,packet())
     value=pending.proposed_value if pending else applied
     try:
         Decimal(value)
@@ -121,9 +126,9 @@ def propose(ref:str,body:ProposalWrite,actor=Depends(staff),db:Session=Depends(s
         raise HTTPException(422,'Choose a numeric current-return claim')
     if record.payload.get('inputs'):
         raise HTTPException(422,'Adjust the source line, not a derived total, to avoid double-counting tax effects')
-    if any(a.status=='proposed' for a in adjustments_for(db,record)):
+    if any(a.status in {'proposed','reopened'} for a in adjustments_for(db,record)):
         raise HTTPException(409,'A proposal is already awaiting review')
-    _,_,_,applied=current_values(db,record)
+    _,_,_,applied=current_values(db,record,packet())
     if body.proposed_value==Decimal(applied):
         raise HTTPException(422,'Proposed value must differ from the approved value')
     refs=evidence_refs(packet(),body.evidence)
@@ -147,13 +152,13 @@ def review(adjustment_id:int,body:ReviewWrite,actor=Depends(staff),db:Session=De
         raise HTTPException(404,'Adjustment not found in this engagement')
     record=get_record(db,packet(),subject.ref,body.expected_revision,lock=True)
     db.refresh(change)
-    if change.status!='proposed':
+    if change.status not in {'proposed','reopened'}:
         raise HTTPException(409,'Adjustment is no longer awaiting review')
     if actor['id'] in contributor_ids(db,packet(),record,change.evidence) or actor['id']==change.actor_id:
         raise HTTPException(403,'You prepared this claim or its evidence and cannot review your own work')
     if actor['role'] not in {'reviewer','partner'}:
         raise HTTPException(403,'Independent reviewer or partner access required')
-    material=max(abs(Decimal(v)) for v in change.effect['tax_change'].values())>1000
+    material=requires_partner(change)
     if material and actor['role']!='partner' and body.decision=='approved':
         raise HTTPException(403,'Tax effect exceeds $1,000; independent partner approval required')
     refs=change.evidence
@@ -200,5 +205,28 @@ def disposition(document_id:str,body:DispositionWrite,actor=Depends(staff),db:Se
     if body.disposition=='duplicate':
         db.add(Edge(packet_id=packet().digest,source=document_id,target=body.duplicate_of,kind='duplicate',resolved=True))
     db.add(AuditEvent(actor_id=actor['id'],action='document_disposition',subject=document_id))
+    reopened=reopen_affected_approvals(db,packet(),record,actor['id'])
     db.commit()
-    return respond({'ref':record.ref,'revision':record.revision,'payload':record.payload},actor,db,record.ref)
+    return respond({'ref':record.ref,'revision':record.revision,'payload':record.payload,'reopened_claims':reopened},actor,db,record.ref)
+
+
+class ReopenWrite(BaseModel):
+    expected_revision:int=Field(ge=1)
+
+@router.post('/adjustments/{adjustment_id}/reopen')
+def reopen_existing(adjustment_id:int,body:ReopenWrite,actor=Depends(staff),db:Session=Depends(session)):
+    require_preparation(actor)
+    change=db.get(Adjustment,adjustment_id)
+    if not change:
+        raise HTTPException(404,'Adjustment not found')
+    subject=db.get(Record,change.record_id)
+    if subject.packet_id!=packet().digest:
+        raise HTTPException(404,'Adjustment not found in this engagement')
+    record=get_record(db,packet(),subject.ref,body.expected_revision,lock=True)
+    db.refresh(change)
+    if change.status!='approved' or approval_is_current(db,packet(),record,change):
+        raise HTTPException(409,'Only an approval with changed evidence can be reopened')
+    reopen_change(db,packet(),record,change,actor['id'],record.ref,record.revision,
+                  'Supporting evidence changed after the earlier approval. Verify the current evidence and request independent approval again.')
+    db.commit()
+    return respond(workflow(db,packet(),record),actor,db,record.ref)
