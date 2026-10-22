@@ -78,6 +78,16 @@ def statuses(actor=Depends(staff),db:Session=Depends(session)):
             continue
         current=approval_is_current(db,packet(),record,change)
         result[record.ref]={'status':'reopened' if change.status=='approved' and not current else change.status,'proposed_value':change.proposed_value}
+    decisions=list(db.scalars(select(Record).where(Record.packet_id==packet().digest,Record.kind=='decision').order_by(Record.id.desc())))
+    for decision in decisions:
+        p=decision.payload
+        if p['claim_ref'] in result:
+            continue
+        subject=get_record(db,packet(),p['claim_ref'])
+        reviews=p.get('reviews',[])
+        current=bool(reviews and reviews[-1]['fingerprint']==fingerprint(db,packet(),subject,p['value'],p['evidence']))
+        status='stale' if p['status']=='approved' and not current else 'needs_evidence' if p['status']=='approved' and p.get('outcome')=='needs_evidence' else 'judgment_'+p['status']
+        result[p['claim_ref']]={'status':status,'proposed_value':p['value']}
     return respond(result,actor,db,'workpaper-status')
 
 @router.get('/business-income')
@@ -107,7 +117,7 @@ def verify(ref:str,body:VerificationWrite,actor=Depends(staff),db:Session=Depend
         Decimal(value)
     except Exception:
         raise HTTPException(422,'This story supports numeric return-line verification')
-    refs=evidence_refs(packet(),body.evidence)
+    refs=evidence_refs(packet(),body.evidence,db)
     refs=list(dict.fromkeys([*refs,*(pending.evidence if pending else approved.evidence if approved else [])]))
     mark_preparer(record,actor)
     record.revision+=1
@@ -124,6 +134,8 @@ def propose(ref:str,body:ProposalWrite,actor=Depends(staff),db:Session=Depends(s
     record=get_record(db,packet(),ref,body.expected_revision,lock=True)
     if record.kind!='claim' or record.payload.get('version')!='v3' or not isinstance(record.payload.get('value'),(int,float)) or isinstance(record.payload.get('value'),bool):
         raise HTTPException(422,'Choose a numeric current-return claim')
+    if record.ref in {'v3:F8283.A1.vehicle','v3:F8949.H.C6'}:
+        raise HTTPException(422,'Use the judgment decision workflow to record authority and treatment for this claim')
     if record.payload.get('inputs'):
         raise HTTPException(422,'Adjust the source line, not a derived total, to avoid double-counting tax effects')
     if any(a.status in {'proposed','reopened'} for a in adjustments_for(db,record)):
@@ -131,7 +143,7 @@ def propose(ref:str,body:ProposalWrite,actor=Depends(staff),db:Session=Depends(s
     _,_,_,applied=current_values(db,record,packet())
     if body.proposed_value==Decimal(applied):
         raise HTTPException(422,'Proposed value must differ from the approved value')
-    refs=evidence_refs(packet(),body.evidence)
+    refs=evidence_refs(packet(),body.evidence,db)
     category=category_for(packet(),record)
     effect=estimated_effect(packet(),record,body.proposed_value,category)
     change=Adjustment(record_id=record.id,actor_id=actor['id'],original_value=str(record.payload['value']),proposed_value=str(body.proposed_value),category=category,reason=body.reason,evidence=refs,effect=effect,status='proposed',at=now())
@@ -141,6 +153,36 @@ def propose(ref:str,body:ProposalWrite,actor=Depends(staff),db:Session=Depends(s
     db.add(AuditEvent(actor_id=actor['id'],action='adjustment_proposed',subject=record.ref))
     db.commit()
     return respond(workflow(db,packet(),record),actor,db,ref)
+
+
+def apply_adjustment_review(db,data,record,change,actor,decision,note):
+    if change.status not in {'proposed','reopened'}:
+        raise HTTPException(409,'Adjustment is no longer awaiting review')
+    if actor['id'] in contributor_ids(db,data,record,change.evidence) or actor['id']==change.actor_id:
+        raise HTTPException(403,'You prepared this claim or its evidence and cannot review your own work')
+    if actor['role'] not in {'reviewer','partner'}:
+        raise HTTPException(403,'Independent reviewer or partner access required')
+    material=requires_partner(change)
+    if material and actor['role']!='partner' and decision=='approved':
+        raise HTTPException(403,'Tax effect exceeds $1,000; independent partner approval required')
+    refs=change.evidence
+    if decision=='approved':
+        valid=[]
+        for check in db.scalars(select(Verification).where(Verification.record_id==record.id)):
+            evidence=list(dict.fromkeys([*check.evidence,*change.evidence]))
+            if not check.reversed_at and check.fingerprint==fingerprint(db,data,record,change.proposed_value,evidence):
+                valid.append(check)
+        if not valid:
+            raise HTTPException(409,'Record a current verification of the proposed value before approval')
+        refs=list(dict.fromkeys([*refs,*valid[-1].evidence]))
+        for old in adjustments_for(db,record):
+            if old.status=='approved':
+                old.status='superseded'
+    change.status=decision
+    db.add(AdjustmentReview(adjustment_id=change.id,actor_id=actor['id'],decision=decision,note=note,evidence=refs,
+                            fingerprint=fingerprint(db,data,record,change.proposed_value,refs),at=now()))
+    record.revision+=1
+    db.add(AuditEvent(actor_id=actor['id'],action='adjustment_'+decision,subject=record.ref))
 
 @router.post('/adjustments/{adjustment_id}/review')
 def review(adjustment_id:int,body:ReviewWrite,actor=Depends(staff),db:Session=Depends(session)):
@@ -152,33 +194,10 @@ def review(adjustment_id:int,body:ReviewWrite,actor=Depends(staff),db:Session=De
         raise HTTPException(404,'Adjustment not found in this engagement')
     record=get_record(db,packet(),subject.ref,body.expected_revision,lock=True)
     db.refresh(change)
-    if change.status not in {'proposed','reopened'}:
-        raise HTTPException(409,'Adjustment is no longer awaiting review')
-    if actor['id'] in contributor_ids(db,packet(),record,change.evidence) or actor['id']==change.actor_id:
-        raise HTTPException(403,'You prepared this claim or its evidence and cannot review your own work')
-    if actor['role'] not in {'reviewer','partner'}:
-        raise HTTPException(403,'Independent reviewer or partner access required')
-    material=requires_partner(change)
-    if material and actor['role']!='partner' and body.decision=='approved':
-        raise HTTPException(403,'Tax effect exceeds $1,000; independent partner approval required')
-    refs=change.evidence
-    if body.decision=='approved':
-        valid=[]
-        for check in db.scalars(select(Verification).where(Verification.record_id==record.id)):
-            evidence=list(dict.fromkeys([*check.evidence,*change.evidence]))
-            if check.fingerprint==fingerprint(db,packet(),record,change.proposed_value,evidence):
-                valid.append(check)
-        if not valid:
-            raise HTTPException(409,'Record a current verification of the proposed value before approval')
-        refs=list(dict.fromkeys([*refs,*valid[-1].evidence]))
-        for old in adjustments_for(db,record):
-            if old.status=='approved':
-                old.status='superseded'
-    change.status=body.decision
-    db.add(AdjustmentReview(adjustment_id=change.id,actor_id=actor['id'],decision=body.decision,note=body.note,evidence=refs,
-                            fingerprint=fingerprint(db,packet(),record,change.proposed_value,refs),at=now()))
-    record.revision+=1
-    db.add(AuditEvent(actor_id=actor['id'],action='adjustment_'+body.decision,subject=record.ref))
+    linked=db.scalar(select(Record).where(Record.packet_id==packet().digest,Record.kind=='decision',Record.payload['adjustment_id'].as_integer()==change.id))
+    if linked:
+        raise HTTPException(409,'Review the linked judgment decision so its authority and correction are approved together')
+    apply_adjustment_review(db,packet(),record,change,actor,body.decision,body.note)
     db.commit()
     return respond(workflow(db,packet(),record),actor,db,record.ref)
 

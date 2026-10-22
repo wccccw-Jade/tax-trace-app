@@ -1,6 +1,6 @@
 # Miraflores workpaper
 
-Day 0–1 foundation and Day 2–3 Story A for the Okafor–Lindqvist case study. Local development only; no deployment has been performed.
+Day 0–1 foundation and Stories A–E (through Day 6–7) for the Okafor–Lindqvist case study. Local development only; no deployment has been performed.
 
 ## Prerequisites
 
@@ -8,7 +8,7 @@ Day 0–1 foundation and Day 2–3 Story A for the Okafor–Lindqvist case study
 - Node.js 22.12+ (or Node 24 LTS) and npm for React/Vite.
 - Docker Desktop (running), including Docker Compose. PostgreSQL 17 runs in the `db` container; no native PostgreSQL installation is needed.
 
-Node.js 24 and the frontend dependencies are installed; the TypeScript/Vite production build passed and `frontend/package-lock.json` is available. Docker PostgreSQL is running with the imported packet. All 13 backend tests passed with PostgreSQL, and live HTTP checks verified the frontend/API connection, role switching, masking and database readiness. Browser visual verification remains blocked because Computer Use permission is not granted. Saved source anchors, revisions, sessions and import records were verified after restarting both the app and PostgreSQL.
+Node.js 24 and the frontend dependencies are installed; the TypeScript/Vite production build passed and `frontend/package-lock.json` is available. Docker PostgreSQL is running with the imported packet. All 28 backend tests passed with PostgreSQL, and live HTTP checks verified the frontend/API connection, role switching, masking and database readiness. Browser visual verification remains blocked because Computer Use permission is not granted. Saved source anchors, revisions, sessions and import records were verified after restarting both the app and PostgreSQL.
 
 ## Local setup
 
@@ -67,7 +67,7 @@ Manual source anchoring is available in the evidence drawer: open a document or 
 
 The Day 0–1 audit identified 14 proposed discrepancies and documented all original investigation leads. Remaining tax judgments are explicitly assigned to later workpaper workflows, not assumed resolved.
 
-Story A adds evidence-bound verification, correction proposals, independent approval/rejection, document dispositions and an approved-only estimated summary. Story B adds a business-income bridge, partner approval and reopening when supporting evidence changes. Broader review management and filing are not implemented yet. They remain follow-up tasks in `plan.md`.
+Story A adds evidence-bound verification, correction proposals, independent approval/rejection, document dispositions and an approved-only estimated summary. Story B adds a business-income bridge, partner approval and reopening when supporting evidence changes. Story C adds client questions, private attachments, reviewed judgments and reversible bulk verification. Story D adds version comparison, per-user change tracking, independent what-if previews and prior-year variance explanations. Story E adds computed readiness, exact-draft approvals, immutable simulated submissions, rejection/correction/acceptance, exports, amendment branches and post-filing models. The remaining breadth features and production deployment remain follow-up work. They remain follow-up tasks in `plan.md`.
 
 ## Story A: trace and correct
 
@@ -95,6 +95,28 @@ Tests use isolated PostgreSQL schemas and do not pre-approve the correction in y
 Open **Business income** for a plain-language explanation of the duplicated $12,400 payment, source links and the books-to-tax bridge. Priya proposes revenue of $151,300 and verifies the evidence; Helen approves because the estimated tax effect exceeds $1,000. A later D15 disposition change reopens the approval and excludes the correction from the summary until fresh verification and approval. The prior approval stays in history.
 
 See [the complete walkthrough](docs/day-3-4-status.md) for steps and expected values. Changes to cited source anchors also reopen affected approvals. Unrelated corrections remain approved. SE tax and QBI are included once in the combined estimate; their actual return lines remain marked affected.
+
+## Story C: client evidence, judgments and checked sales
+
+Run `make migrate` and restart the backend. Staff can ask a client from a claim; the assigned client answers and attaches files in their portal. Answers become evidence, while an independently reviewed decision records the chosen treatment, alternatives, authority and rationale. E3 and C6 corrections are reviewed with their decisions. A request for more evidence keeps the underlying issue open.
+
+**Sales detail** checks each broker row against the current printed statement. It currently offers 159 eligible rows, keeps exceptions visible, and saves bulk verification as one operation with whole-batch undo. Undo preserves the original verification history.
+
+See [the plain-language walkthrough](docs/day-4-5-status.md) for E3, C6 and bulk verification. Attachments are stored privately in `ATTACHMENT_DIR` (default `var/attachments`); include that directory in local backups. Downloads require client ownership or staff clearance. Private object storage remains a prerequisite for Heroku deployment.
+
+## Story D: history, what-if and prior year
+
+Run `make migrate` and restart the backend. **History** compares engine versions and the approved workpaper, including source changes, and keeps an explicit per-user “seen” marker. **What-if** shows all five supplied alternatives against v3 independently, plus read-only numeric previews from v3 or the approved workpaper. Supported previews can become proposals through the existing review workflow.
+
+**Prior year** applies the firm's combined percentage/dollar threshold, treats zero and missing values explicitly, and saves explanations against the values they covered. Changed values make earlier explanations stale. See [the walkthrough](docs/day-5-6-status.md) for steps and expected results. Migration `0004` persists staff activity markers; this story remains local-only.
+
+## Story E: readiness, frozen filing and after
+
+Run `make migrate` and restart the backend. **Readiness & filing** lists genuine claim, document, diagnostic, question and checklist blockers. Once those are resolved, independent staff sign-offs, explicit partner acceptance of estimated computation and both clients’ exact-draft authorizations permit a simulated submission. Clients use **Approve & copies**.
+
+Each attempt creates an immutable hashed snapshot. The scripted rejection, reviewed identity correction, linked resubmission and separate agency acceptances preserve earlier copies. Accepted records support HTML client copies, examination ZIPs with checksums, separate amendment branches and snapshot-based payment/carryforward/planning models.
+
+See [the complete walkthrough](docs/day-6-7-status.md). Migration `0005` adds database protection for frozen snapshots. The live workspace starts blocked; automated tests use synthetic remaining-scope proofs only in isolated test schemas. Nothing is transmitted or paid externally, and no official Form 1040-X is generated.
 
 ## Checks
 

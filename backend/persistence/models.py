@@ -55,6 +55,9 @@ class Verification(Base):
     evidence: Mapped[list] = mapped_column(JSONB)
     value: Mapped[str] = mapped_column(Text)
     subject_revision: Mapped[int]
+    operation_id: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
+    reversed_at: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    reversed_by: Mapped[str | None] = mapped_column(String(30), nullable=True)
     fingerprint: Mapped[str] = mapped_column(String(64))
     at: Mapped[str] = mapped_column(String(40))
 
@@ -81,4 +84,23 @@ class AdjustmentReview(Base):
     note: Mapped[str] = mapped_column(Text)
     evidence: Mapped[list] = mapped_column(JSONB)
     fingerprint: Mapped[str] = mapped_column(String(64))
+    at: Mapped[str] = mapped_column(String(40))
+
+class LastSeen(Base):
+    __tablename__ = 'last_seen'
+    packet_id: Mapped[str] = mapped_column(ForeignKey('packet_imports.id'), primary_key=True)
+    actor_id: Mapped[str] = mapped_column(String(30), primary_key=True)
+    cursor: Mapped[int] = mapped_column(Integer, default=0)
+    revision: Mapped[int] = mapped_column(Integer, default=1)
+    at: Mapped[str] = mapped_column(String(40))
+
+class FilingSnapshot(Base):
+    __tablename__ = 'filing_snapshots'
+    id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    packet_id: Mapped[str] = mapped_column(ForeignKey('packet_imports.id'), index=True)
+    branch_ref: Mapped[str] = mapped_column(Text)
+    parent_id: Mapped[str | None] = mapped_column(ForeignKey('filing_snapshots.id'), nullable=True)
+    content: Mapped[dict] = mapped_column(JSONB)
+    digest: Mapped[str] = mapped_column(String(64))
+    actor_id: Mapped[str] = mapped_column(String(30))
     at: Mapped[str] = mapped_column(String(40))

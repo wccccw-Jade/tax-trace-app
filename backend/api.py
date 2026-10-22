@@ -22,7 +22,7 @@ async def database_error(request, exc):
 
 @app.get('/api/health')
 def health():
-    return {'status':'ok', 'stage':'day-3-4', 'demo':True}
+    return {'status':'ok', 'stage':'day-6-7', 'demo':True}
 
 @app.get('/api/ready')
 def ready(db: Session = Depends(session)):
@@ -77,6 +77,11 @@ def records(kind: str = 'document', version: str = 'v3', document_id: str | None
     imported(db)
     query = select(Record).where(Record.packet_id == packet().digest, Record.kind == kind)
     rows = db.scalars(query).all()
+    from backend.domain.filing import replay_as_of,available
+    as_of=replay_as_of(db,packet())
+    if as_of:
+        visible_records={r.ref:r for r in rows}
+        rows=[r for r in rows if available(packet(),r.ref,as_of,visible_records)]
     if document_id:
         rows = [r for r in rows if r.payload.get('document_id') == document_id]
     if unresolved_only:
@@ -90,8 +95,12 @@ def trace(ref: str, version: str = 'v3', actor=Depends(staff), db: Session = Dep
     imported(db)
     record = db.scalar(select(Record).where(Record.packet_id==packet().digest, Record.ref==ref))
     value = record.payload if record else packet().resolve(ref, version)
-    if value is None:
-        raise HTTPException(404, 'Reference not found')
+    from backend.domain.filing import replay_as_of,available
+    as_of=replay_as_of(db,packet())
+    if value is None or as_of and not available(packet(),ref,as_of,{record.ref:record} if record else None):
+        raise HTTPException(404, 'Reference not found or not yet available in replay')
+    if as_of and ref.startswith('agency:') and isinstance(value,list):
+        value=[e for i,e in enumerate(value) if available(packet(),ref+'/'+str(i),as_of)]
     edges = db.scalars(select(Edge).where(Edge.packet_id==packet().digest, (Edge.source==ref) | (Edge.target==ref))).all()
     page = None
     if record and record.kind == 'extraction':
@@ -140,6 +149,16 @@ def manual_anchor(extraction_id: str, body: ManualAnchor, actor=Depends(staff), 
 
 from backend.workpaper_api import router as workpaper_router
 app.include_router(workpaper_router)
+from backend.collaboration_api import router as collaboration_router
+app.include_router(collaboration_router)
+from backend.sales_api import router as sales_router
+app.include_router(sales_router)
+from backend.history_api import router as history_router
+app.include_router(history_router)
+from backend.filing_api import router as filing_router
+app.include_router(filing_router)
+from backend.filing_exports import router as filing_export_router
+app.include_router(filing_export_router)
 
 # Only build output is served; never mount the repository or original fixture.
 if (ROOT / 'frontend/dist').exists():

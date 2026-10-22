@@ -30,13 +30,19 @@ def get_record(db, packet, ref, revision=None, lock=False):
     return record
 
 
-def evidence_refs(packet, refs):
+def evidence_refs(packet, refs, db=None):
     refs=list(dict.fromkeys(ref.strip() for ref in refs if ref.strip()))
     if not refs:
         raise HTTPException(422,'At least one evidence reference is required')
-    missing=[ref for ref in refs if packet.resolve(ref) is None]
+    saved=set(db.scalars(select(Record.ref).where(Record.packet_id==packet.digest,Record.ref.in_(refs),Record.kind.in_(['client_answer','attachment'])))) if db else set()
+    missing=[ref for ref in refs if packet.resolve(ref) is None and ref not in saved]
     if missing:
         raise HTTPException(422,'Unresolved evidence reference: '+', '.join(missing))
+    if db:
+        from backend.domain.filing import replay_as_of,available
+        as_of=replay_as_of(db,packet)
+        if as_of and any(not available(packet,r,as_of) for r in refs):
+            raise HTTPException(422,'Evidence has not arrived in the filing replay')
     return refs
 
 
@@ -44,11 +50,17 @@ def mark_preparer(record, actor):
     record.payload={**record.payload,'preparers':sorted(set(record.payload.get('preparers',[]))|{actor['id']})}
 
 
-def scope_records(db, packet, record, evidence):
+def evidence_graph(db, packet):
     records={r.ref:r for r in db.scalars(select(Record).where(Record.packet_id==packet.digest))}
     links={}
     for edge in db.scalars(select(Edge).where(Edge.packet_id==packet.digest)):
-        links.setdefault(edge.source,[]).append(edge.target)
+        if edge.kind not in {'answers','subject'}:
+            links.setdefault(edge.source,[]).append(edge.target)
+    return records,links
+
+
+def scope_records(db, packet, record, evidence, graph=None):
+    records,links=graph or evidence_graph(db,packet)
     pending=[record.ref,*evidence]
     seen=set()
     while pending:
@@ -60,10 +72,10 @@ def scope_records(db, packet, record, evidence):
     return [records[ref] for ref in sorted(seen) if ref in records]
 
 
-def fingerprint(db, packet, record, value, evidence):
+def fingerprint(db, packet, record, value, evidence, graph=None):
     # Approval changes the subject revision without changing its reviewed value.
     # Source revisions, by contrast, invalidate evidence-bound verification.
-    refs=[(r.ref,r.revision) for r in scope_records(db,packet,record,evidence) if r.id!=record.id]
+    refs=[(r.ref,r.revision) for r in scope_records(db,packet,record,evidence,graph) if r.id!=record.id]
     body={'claim':record.ref,'value':str(D(value)),'evidence':sorted(evidence),'sources':refs}
     return hashlib.sha256(json.dumps(body,sort_keys=True).encode()).hexdigest()
 
@@ -93,6 +105,8 @@ def current_values(db, record, packet=None):
 
 def category_for(packet, record):
     key=record.payload['key']
+    if key=='F8949.H.C6':
+        return 'stcg'
     if key.startswith('SchB.1.') or key in {'SchB.2','SchB.4','F1040.2b'}:
         return 'interest'
     from backend.domain.audit import run_audit
@@ -172,15 +186,16 @@ def workflow(db, packet, record):
     checks=[]
     for v in db.scalars(select(Verification).where(Verification.record_id==record.id).order_by(Verification.id.desc())):
         scope=list(dict.fromkeys([*v.evidence,*refs]))
-        current=v.fingerprint==fingerprint(db,packet,record,value,scope)
-        checks.append({'id':v.id,'actor_id':v.actor_id,'method':v.method,'note':v.note,'evidence':v.evidence,'value':v.value,'at':v.at,'current':current,'subject_revision':v.subject_revision})
+        current=not v.reversed_at and v.fingerprint==fingerprint(db,packet,record,value,scope)
+        checks.append({'id':v.id,'actor_id':v.actor_id,'method':v.method,'note':v.note,'evidence':v.evidence,'value':v.value,'at':v.at,'current':current,'subject_revision':v.subject_revision,'operation_id':v.operation_id,'reversed_at':v.reversed_at,'reversed_by':v.reversed_by})
     changes=[]
     for a in adjustments_for(db,record):
         reviews=[]
         for review in db.scalars(select(AdjustmentReview).where(AdjustmentReview.adjustment_id==a.id).order_by(AdjustmentReview.id)):
             reviews.append({'actor_id':review.actor_id,'decision':review.decision,'note':review.note,'at':review.at,
                             'current':review.fingerprint==fingerprint(db,packet,record,a.proposed_value,review.evidence)})
-        changes.append({'id':a.id,'actor_id':a.actor_id,'original_value':a.original_value,'proposed_value':a.proposed_value,'reason':a.reason,'category':a.category,'evidence':a.evidence,'effect':a.effect,'status':a.status,'at':a.at,'reviews':reviews,'requires_partner':requires_partner(a),
+        decision_ref=db.scalar(select(Record.ref).where(Record.packet_id==packet.digest,Record.kind=='decision',Record.payload['adjustment_id'].as_integer()==a.id))
+        changes.append({'decision_ref':decision_ref,'id':a.id,'actor_id':a.actor_id,'original_value':a.original_value,'proposed_value':a.proposed_value,'reason':a.reason,'category':a.category,'evidence':a.evidence,'effect':a.effect,'status':a.status,'at':a.at,'reviews':reviews,'requires_partner':requires_partner(a),
                         'approval_current':approval_is_current(db,packet,record,a) if a.status=='approved' else False,
                         'reopen_events':[e for e in record.payload.get('review_events',[]) if e['adjustment_id']==a.id]})
     try:
@@ -234,7 +249,8 @@ def projected_summary(db, packet):
             changed.add(key)
     for key in supported:
         evaluate(key)
-    affected=set(changed)
+    classification_changes=[{'ref':r.ref,**a.effect['treatment']} for a,r in rows if a.effect.get('treatment')]
+    affected=set(changed)|{c['target_total'] for c in classification_changes}
     while True:
         more={key for key,line in lines.items() if any(i in affected for i in line['inputs'])}
         if more<=affected:
@@ -242,5 +258,6 @@ def projected_summary(db, packet):
         affected.update(more)
     return {'version':'v3','summary':summary,'approved_adjustments':len(rows),'reopened_adjustments':reopened_count+stale_count,'tax_change':{j:str(deltas[j]) for j in summary},
             'basis':'Estimated tax summary over v3; only current approved adjustments included; reopened corrections are excluded. No filing readiness implied.',
+            'classification_changes':classification_changes,
             'changed_lines':[{'key':key,'engine_value':lines[key]['value'],'value':str(values[key]) if key in changed else lines[key]['value'],
                               'basis':'recomputed' if key in changed else 'affected'} for key in sorted(affected)]}
