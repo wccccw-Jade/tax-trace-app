@@ -55,7 +55,7 @@ export function Source({trace,actor,onOpen,onSaved}:{trace:Trace;actor:Actor|nul
     </>}
     {pages&&<><p className="caption">SIMULATED SOURCE DOCUMENT</p>{pages.map(p=><section key={p.page}><h3><button className="text-button" onClick={()=>onOpen(`doc:${trace.ref}#page${p.page}`)}>Page {p.page} ↗</button></h3><div className="source-page">{p.printed_content}</div></section>)}</>}
     {docId&&<section className="field-list"><h3>Extracted fields ({fields.length})</h3><input aria-label="Search source fields" className="search" placeholder="Find a field…" value={filter} onChange={e=>{setFilter(e.target.value);setLimit(40);}}/><label><input type="checkbox" checked={unresolved} onChange={e=>{setUnresolved(e.target.checked);setLimit(40);}}/> Unresolved anchors only</label>{visible.slice(0,limit).map(f=><button className="edge" key={f.ref} onClick={()=>onOpen(f.ref)}><strong>{f.payload.label||f.payload.field}</strong><span>{f.ref} · page {f.payload.page} · {String(f.payload.value)}</span><small>{f.payload.locator.resolved?'Located':'Needs source anchor'}</small></button>)}{!visible.length&&<p className="muted">No fields match this filter.</p>}{visible.length>limit&&<button className="load-more" onClick={()=>setLimit(limit+40)}>Show more fields ({visible.length-limit} remaining)</button>}</section>}
-    {!pageText&&!pages&&<pre>{JSON.stringify(trace.value,null,2)}</pre>}
+    {!pageText&&!pages&&<details><summary>Technical record details</summary><pre>{JSON.stringify(trace.value,null,2)}</pre></details>}
     {error&&<div role="alert" className="error">{error}</div>}
     {pageText&&<details><summary>Record details</summary><pre>{JSON.stringify(trace.value,null,2)}</pre></details>}
   </>;
