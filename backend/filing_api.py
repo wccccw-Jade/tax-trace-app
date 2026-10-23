@@ -17,6 +17,7 @@ from backend.domain.filing import branch,state,current_lines,available,canonical
 from backend.domain.workpaper import now,require_preparation,get_record,evidence_refs,evidence_graph,category_for,estimated_effect,contributor_ids,scope_records
 from backend.domain.formulas import D
 from backend.storage import attachments
+from backend.domain.policy import standards
 
 router=APIRouter(prefix='/api/filing')
 
@@ -179,7 +180,7 @@ def step(ref:str,body:StepWrite,actor=Depends(staff),db:Session=Depends(session)
     row=branch(db,packet(),ref,body.expected_revision,True)
     prep(actor,row)
     immutable_draft(db,row)
-    if body.name not in packet().data['firm']['starter_standards']['required_steps'] or body.name in AUTO_STEPS:
+    if body.name not in standards(db,packet())['required_steps'] or body.name in AUTO_STEPS:
         raise HTTPException(422,'Choose a preparer required step; sign-offs and authorization are computed separately')
     evidence=refs(db,row,body.evidence)
     history=[*row.payload.get('step_history',[]),{'name':body.name,'before':row.payload['steps'].get(body.name),'at':now()}]
@@ -202,6 +203,8 @@ def resolve(ref:str,body:ResolutionWrite,actor=Depends(staff),db:Session=Depends
     if not target:
         raise HTTPException(422,'Choose a currently open claim or diagnostic/finding disposition')
     evidence=refs(db,row,body.evidence)
+    if body.target=='check:CA_WAGES_D73' and not any(r in evidence for r in ('D73','doc:D73#page1','ev-1081')):
+        raise HTTPException(422,'The wage allocation conclusion must cite D73 or its California wage field')
     records,_=evidence_graph(db,packet())
     for r in evidence:
         if r in records and records[r].kind=='extraction' and not records[r].payload.get('locator',{}).get('resolved'):
@@ -228,7 +231,7 @@ def review_resolution(resolution_ref:str,body:ReviewWrite,actor=Depends(staff),d
     contributors=contributor_ids(db,packet(),SimpleNamespace(ref='_resolution'),p['evidence'])
     if actor['role'] not in {'reviewer','partner'} or actor['id']==p['actor_id'] or actor['id'] in contributors:
         raise HTTPException(403,'Independent reviewer or partner required')
-    if p.get('resolved_amount') and D(p['resolved_amount'])>1000 and actor['role']!='partner' and body.decision=='approved':
+    if p.get('resolved_amount') and D(p['resolved_amount'])>D(standards(db,packet())['partner_threshold']) and actor['role']!='partner' and body.decision=='approved':
         raise HTTPException(403,'This material California tax disposition requires partner approval')
     if not body.note.strip():
         raise HTTPException(422,'Record a review conclusion')
@@ -331,7 +334,7 @@ def frozen_content(db,row,current):
         evidence=deepcopy(snapshot_record(db,row.payload['parent_snapshot']).content['evidence'])
     else:
         evidence={r.ref:{'ref':r.ref,'kind':r.kind,'revision':r.revision,'payload':r.payload} for r in records.values()
-            if r.kind in {'document','page','extraction','client_evidence','question','client_answer','attachment','household','decision','filing_resolution'} and available(packet(),r.ref,row.payload['as_of'],records)}
+            if r.kind in {'document','page','extraction','client_evidence','question','client_answer','attachment','household','decision','filing_resolution','outside_filing','area_review'} and available(packet(),r.ref,row.payload['as_of'],records)}
     if row.payload.get('parent_snapshot'):
         for change in row.payload['changes']:
             if change['status']=='approved':
@@ -366,7 +369,7 @@ def frozen_content(db,row,current):
     return {'packet_hash':packet().digest,'branch_ref':row.ref,'kind':row.payload['kind'],'as_of':row.payload['as_of'],'fingerprint':current['fingerprint'],
         'lines':lines,'summary':summary,'household':household,'evidence':evidence,'attachments':files,'verifications':checks,'adjustments':adjustments,
         'changes':row.payload['changes'],'evidence_edges':edges,'audit_events':audit,'step_history':row.payload.get('step_history',[]),'steps':row.payload['steps'],'signoffs':current['signoffs'],'authorizations':current['authorizations'],
-        'standards':packet().data['firm']['starter_standards'],'carryovers':packet().data['return_versions'][-1]['carryovers_out'],
+        'standards':standards(db,packet()),'standards_revision':records['firm:policy'].revision if 'firm:policy' in records else 0,'carryovers':packet().data['return_versions'][-1]['carryovers_out'],
         'carryover_basis':'Engine v3 carryovers; review after workpaper adjustments. They are not silently recomputed.',
         'limit':current['limit'],'frozen_at':now()}
 
@@ -496,7 +499,7 @@ def review_change(change_id:str,ref:str,body:ReviewWrite,actor=Depends(staff),db
     contributors=contributor_ids(db,packet(),SimpleNamespace(ref='_branch'),item['evidence'])
     if actor['role'] not in {'reviewer','partner'} or actor['id']==item['actor_id'] or actor['id'] in contributors:
         raise HTTPException(403,'Independent reviewer or partner required')
-    if max(abs(D(v)) for v in item['effect']['tax_change'].values())>1000 and actor['role']!='partner' and body.decision=='approved':
+    if max(abs(D(v)) for v in item['effect']['tax_change'].values())>D(standards(db,packet())['partner_threshold']) and actor['role']!='partner' and body.decision=='approved':
         raise HTTPException(403,'This material correction requires partner approval')
     refs(db,row,item['evidence'])
     if body.decision=='approved' and item.get('fingerprint')!=change_fingerprint(db,packet(),item):

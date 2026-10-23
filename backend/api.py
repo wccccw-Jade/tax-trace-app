@@ -22,7 +22,7 @@ async def database_error(request, exc):
 
 @app.get('/api/health')
 def health():
-    return {'status':'ok', 'stage':'day-6-7', 'demo':True}
+    return {'status':'ok', 'stage':'day-7-8', 'demo':True}
 
 @app.get('/api/ready')
 def ready(db: Session = Depends(session)):
@@ -99,8 +99,10 @@ def trace(ref: str, version: str = 'v3', actor=Depends(staff), db: Session = Dep
     as_of=replay_as_of(db,packet())
     if value is None or as_of and not available(packet(),ref,as_of,{record.ref:record} if record else None):
         raise HTTPException(404, 'Reference not found or not yet available in replay')
-    if as_of and ref.startswith('agency:') and isinstance(value,list):
-        value=[e for i,e in enumerate(value) if available(packet(),ref+'/'+str(i),as_of)]
+    if as_of and ref.startswith('agency:'):
+        from backend.domain.breadth import dated
+        if isinstance(value,list):value=[e for i,e in enumerate(value) if available(packet(),ref+'/'+str(i),as_of)]
+        value=dated(value,as_of[:10])
     edges = db.scalars(select(Edge).where(Edge.packet_id==packet().digest, (Edge.source==ref) | (Edge.target==ref))).all()
     page = None
     if record and record.kind == 'extraction':
@@ -159,6 +161,9 @@ from backend.filing_api import router as filing_router
 app.include_router(filing_router)
 from backend.filing_exports import router as filing_export_router
 app.include_router(filing_export_router)
+
+from backend.breadth_api import router as breadth_router
+app.include_router(breadth_router)
 
 # Only build output is served; never mount the repository or original fixture.
 if (ROOT / 'frontend/dist').exists():

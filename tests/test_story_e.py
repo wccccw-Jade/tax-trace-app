@@ -71,6 +71,14 @@ def test_only_prepare_full_scope(client,engine,packet):
                 'rationale':'Only to exercise later filing state transitions in an isolated test schema.','actor_id':'st-01','at':'2026-07-10T18:00:00Z',
                 'resolved_amount':None,'reasoned_none':target=='diagnostic:CA_AMT_NOT_COMPUTED',
                 'review':{'decision':'approved','actor_id':'st-02','fingerprint':fp},'review_history':[]}))
+        # Explicit synthetic coverage for Day 7–8 scope gates, isolated to this test schema.
+        from backend.domain.breadth import OUTSIDE,VIEWS
+        for item in OUTSIDE:
+            if not db.scalar(select(Record).where(Record.ref=='outside:'+item['id'])):
+                db.add(Record(packet_id=packet.digest,ref='outside:'+item['id'],kind='outside_filing',payload={'owner':'Synthetic test owner','status':'communicated','note':'SYNTHETIC TEST SETUP — responsibility communicated.','actor_id':'st-01'}))
+        for key in [*VIEWS,'business','sales']:
+            if not db.scalar(select(Record).where(Record.ref=='area:'+key)):
+                db.add(Record(packet_id=packet.digest,ref='area:'+key,kind='area_review',payload={'status':'reviewed','note':'SYNTHETIC TEST SETUP — area considered.','actor_id':'st-01'}))
         steps={s:{'actor_id':'st-01','evidence':['D01'],'note':'Synthetic test-only completed step.','at':'2026-07-10T18:00:00Z'} for s in packet.data['firm']['starter_standards']['required_steps'] if s not in AUTO_STEPS}
         row.payload={**row.payload,'steps':steps}
         row.revision+=1

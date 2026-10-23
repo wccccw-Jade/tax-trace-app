@@ -186,7 +186,7 @@ def preview(body:WhatIfWrite,actor=Depends(staff),db:Session=Depends(session)):
             summary[j]['payments']=str(D(summary[j]['payments'])+body.proposed_value-value)
         summary[j]['balance_due']=str(D(summary[j]['total_tax'])-D(summary[j]['payments']))
     pending,_,_,approved_value=current_values(db,record,packet())
-    requires_judgment=record.ref in {'v3:F8283.A1.vehicle','v3:F8949.H.C6'}
+    requires_judgment=record.ref in {'v3:F8283.A1.vehicle','v3:F8949.H.C6','v3:SchCA540NR.1.E'}
     return respond({'ref':record.ref,'revision':record.revision,'base':body.base,'base_value':str(value),'proposed_value':str(body.proposed_value),
         'category':category,'effect':effect,'summary':summary,'mapping':mapping,'basis':line['basis'],
         'can_propose':configured==category and not record.payload.get('inputs') and not requires_judgment and not pending and D(approved_value)!=body.proposed_value,

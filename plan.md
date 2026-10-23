@@ -1,7 +1,7 @@
 # Miraflores tax workpaper: product and implementation plan
 
-Status: revised plan, ready to build.
-Revised: October 21, 2026.
+Status: local prototype implemented through Day 7–8; Day 9–10 delivery tasks remain.
+Revised: October 23, 2026.
 Scope: one complex household (Okafor-Lindqvist), tax year 2025.
 
 ## 1. What we are building and how it will be judged
@@ -22,11 +22,11 @@ Every number on the return is a **claim**. The workpaper's job is to make every 
 
 A claim's status has three separate parts. They are stored independently, because one claim can be in several states at once (for example contradicted *and* stale).
 
-| Part | Values | Notes |
-| --- | --- | --- |
-| Evidence | missing · cited (extracted field) · cited (manual page anchor) · client statement · third-party / agency record | Describes what the support *is*, not whether it is good enough. An unextracted page, a low-confidence read or a client answer can still support a verified conclusion once a person has reviewed it. |
-| Checks | not applicable · passed · failed (discrepancy) · open question | Results of independent checks (section 6), each with the inputs it derived |
-| Review | not reviewed · verified (method, evidence, revision) · accepted by judgment (decision, authority, approver) · stale (reason) | Stale means a verification or approval was given, and then something it covered changed |
+| Part     | Values                                                                                                                          | Notes                                                                                                                                                                                                  |
+| -------- | ------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Evidence | missing · cited (extracted field) · cited (manual page anchor) · client statement · third-party / agency record             | Describes what the support *is*, not whether it is good enough. An unextracted page, a low-confidence read or a client answer can still support a verified conclusion once a person has reviewed it. |
+| Checks   | not applicable · passed · failed (discrepancy) · open question                                                               | Results of independent checks (section 6), each with the inputs it derived                                                                                                                             |
+| Review   | not reviewed · verified (method, evidence, revision) · accepted by judgment (decision, authority, approver) · stale (reason) | Stale means a verification or approval was given, and then something it covered changed                                                                                                                |
 
 The **queue label** is derived from the three parts, and the first match wins: *Contradicted* (a check failed) → *Needs evidence* (evidence missing, or a locator is unresolved) → *Stale* → *Needs review* → *Done*. Extra badges show any other conditions that also apply.
 
@@ -36,6 +36,7 @@ What follows from this:
 - **Tax areas are filters on the queue**, not separate documents. "Investments" means claims tagged investments. The records a CPA expects (depreciation schedule, books to tax, state split and so on) are generated views over the same claims and evidence. They are never edited separately.
 - **Evidence is a graph.** Each claim links to one or more sources: document fields, client answers, agency records, prior-year values, other claims. Following a number traces it down to the source. Following a document traces it up to everywhere it landed, or records why it didn't.
 - **Readiness to file is computed, not declared.** It applies only to **in-scope claims**: the lines of the current return revision plus every input that feeds them through evidence edges. Superseded, duplicate or unused extractions need only a document disposition, not a review. Every in-scope claim must be *Done*, meaning one of:
+
   - **Leaf claim** (fed directly by a source): verified or accepted by judgment, with a resolved evidence reference. The reference type depends on the source: document field (with a locator), client answer, agency record, prior-year value, or engine parameter.
   - **Derived claim** (built from other lines): it inherits *Done* when its arithmetic check passes and all its inputs are Done. This is how 295 Form 8949 rows can support 7 box totals without anyone signing every total.
   - **Derived claim whose rule cannot be checked independently** (tax brackets, phase-outs, SE tax, QBI, AMT, credit limits): a person verifies it explicitly, or it goes through the estimation contract in section 8.
@@ -70,34 +71,34 @@ This idea is what the one-page deliverable explains. Every screen should be expl
 
 The audit runs **first**, because the errors decide which checks and screens we build, and the error report is a deliverable. Four confident mistakes are already confirmed from packet evidence. Tax effects are v3 rate estimates.
 
-| # | Error | Evidence | Correction | Est. effect (fed / CA) |
-| --- | --- | --- | --- | --- |
-| E1 | **Interest counted twice.** The Northlake Bank sweep interest of 1,840 appears as SchB.1.1 (from the D28 consolidated 1099) and again as SchB.1.2 (from the D29 standalone 1099-INT). | D29 says it is the "bank sweep program for Northlake Securities account ending 7731". D28 lists the same sweep for account 7731. | Remove SchB.1.2 (−1,840) | −640 / −127 |
-| E2 | **Wrong exchange rate.** Swedish interest of SEK 18,450 (ev-0960, D36) was converted at `fx.SEK.2024_average` (10.56) to 1,747. 2025 income calls for the 2025 average (9.86), which gives 1,871. | SchB.1.6 sources cite `ref:fx.SEK.2024_average`; `fx_rates` has `2025_average` | +124 interest | +43 / +9 |
-| E3 | **Vehicle donation overstated.** Form 8283 claims 6,000 for the 2012 Subaru, based on the client's Kelley Blue Book figure (qa-39). The 1098-C (D66) shows the charity sold the car at arm's length for gross proceeds of 2,900. | F8283.A1.vehicle sources are qa-39 plus only the *date* from D66 (ev-1055); the 2,900 in box 4c was not used | Limit to 2,900 (−3,100 itemized) | +806 / +149 |
-| E4 | **1099-K counted twice in gross receipts.** SchC.1 = 163,700 = book revenue 151,300 + 1099-K 12,400, because rule R-SCHC-GROSS treated the 1099-K as unmatched. D15 says Atlas Outdoor Gear's 41,200 includes 12,400 "through Paywell Payments card processing (deposited gross)", so it is already in book revenue. | D14, D15, D21, D17 | Gross receipts 151,300 (−12,400) | −4,402 / −384. The `schc_profit` rate already combines income tax, SE tax and QBI. It is a single combined estimate measured at v3 numbers, so threshold and interaction effects are not captured. |
+| #  | Error                                                                                                                                                                                                                                                                                                                      | Evidence                                                                                                                         | Correction                        | Est. effect (fed / CA)                                                                                                                                                                                 |
+| -- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------- | --------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| E1 | **Interest counted twice.** The Northlake Bank sweep interest of 1,840 appears as SchB.1.1 (from the D28 consolidated 1099) and again as SchB.1.2 (from the D29 standalone 1099-INT).                                                                                                                                | D29 says it is the "bank sweep program for Northlake Securities account ending 7731". D28 lists the same sweep for account 7731. | Remove SchB.1.2 (−1,840)         | −640 / −127                                                                                                                                                                                          |
+| E2 | **Wrong exchange rate.** Swedish interest of SEK 18,450 (ev-0960, D36) was converted at `fx.SEK.2024_average` (10.56) to 1,747. 2025 income calls for the 2025 average (9.86), which gives 1,871.                                                                                                                  | SchB.1.6 sources cite `ref:fx.SEK.2024_average`; `fx_rates` has `2025_average`                                             | +124 interest                     | +43 / +9                                                                                                                                                                                               |
+| E3 | **Vehicle donation overstated.** Form 8283 claims 6,000 for the 2012 Subaru, based on the client's Kelley Blue Book figure (qa-39). The 1098-C (D66) shows the charity sold the car at arm's length for gross proceeds of 2,900.                                                                                     | F8283.A1.vehicle sources are qa-39 plus only the *date* from D66 (ev-1055); the 2,900 in box 4c was not used                   | Limit to 2,900 (−3,100 itemized) | +806 / +149                                                                                                                                                                                            |
+| E4 | **1099-K counted twice in gross receipts.** SchC.1 = 163,700 = book revenue 151,300 + 1099-K 12,400, because rule R-SCHC-GROSS treated the 1099-K as unmatched. D15 says Atlas Outdoor Gear's 41,200 includes 12,400 "through Paywell Payments card processing (deposited gross)", so it is already in book revenue. | D14, D15, D21, D17                                                                                                               | Gross receipts 151,300 (−12,400) | −4,402 / −384. The `schc_profit` rate already combines income tax, SE tax and QBI. It is a single combined estimate measured at v3 numbers, so threshold and interaction effects are not captured. |
 
 E4 is above $1,000, so it requires partner sign-off, which makes it a good demo of that rule. call-01 supports E3 independently ("the charity sold it at auction"). E3 and E4 are exactly what the 2028 IRS Letter 566 examines (Form 8283 noncash gifts; Schedule C receipts against 1099-NEC 142,000 and 1099-K 12,400). The demo should show that the workpaper surfaced both **before filing**, and that the notice response is a one-click export of evidence that already exists.
 
 ### Open leads (to finish in the Day-0/Day-1 audit)
 
-| Lead | Trigger | Question to settle |
-| --- | --- | --- |
-| Broker mismatch | v3: Meridian summary proceeds 71,965 vs extracted lots 71,715 | Which lot is missing or misread? Is it in the corrected D31? |
-| Corrected brokerage statement | D30 → D31, both partial | Do v3 lots come only from the replacement? |
-| Duplicate W-2 upload | D09/D10, msg-02 | Prove wages are counted once. A *valid* duplicate is not an error. |
-| Crypto lot C6 has no basis | Diagnostic; msg-07 | What evidence supports the client's claimed basis and date? |
-| Handwritten receipt | D64 confidence 0.41; msg-08 | Printed value vs extracted vs client confirmation |
-| S-corporation basis gap | D39/D40; diagnostic disappears in v3 | Does the late 2023 K-1 actually close the gap? |
-| California-source wages | D73 paystub, mid-year move | Allocation by work and pay period, not a blanket day fraction |
-| California AMT not computed | `CA_AMT_NOT_COMPUTED` | Owner, evidence and explicit resolution before filing |
-| Questionnaire conflict | qa-14 "no sales" vs 282 sales and 12 crypto disposals | Record the client correction |
-| Underpayment penalty (Form 2210) | 164 in every version | Check against the Form 2210 rules, not `post_filing_rates` (those apply to late payment after filing). The required annual payment of 41,313 is 110% of the 2024 tax of 37,557, so the prior-year safe harbor governs and an unchanged penalty is expected. Remaining checks: installment timing, how withholding is treated, the annualized alternative (also 164; `penalty_annualized` what-if = 0 change), and the penalty decision record. |
-| Business mixed use | D15: books charge the family phone plan (4 lines) and home internet at 100%; "Spotify Family" sits in software | call-01 already supplies the percentages: phone 70%, internet 50%, Spotify personal ("booked by mistake"). The task is to evaluate that client statement as evidence, decide, and apply the books-to-tax adjustments, not to ask the client again. |
-| Home office | 240 vs 300 sq ft prior year | Explain the variance |
-| Outside filings | FBAR, late 1099-NECs (2026-02-02 already missed), Ada's own return | Responsibility and communication, not filing |
-| Dependent identity | e-file rejection R0000-504-02 for Theo; D71, msg-10 | Keep submitted, rejected and corrected identities separate |
-| Unextracted documents | D07, D69, D70, D72 | Manual citations at page level |
+| Lead                             | Trigger                                                                                                        | Question to settle                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| -------------------------------- | -------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Broker mismatch                  | v3: Meridian summary proceeds 71,965 vs extracted lots 71,715                                                  | Which lot is missing or misread? Is it in the corrected D31?                                                                                                                                                                                                                                                                                                                                                                                       |
+| Corrected brokerage statement    | D30 → D31, both partial                                                                                       | Do v3 lots come only from the replacement?                                                                                                                                                                                                                                                                                                                                                                                                         |
+| Duplicate W-2 upload             | D09/D10, msg-02                                                                                                | Prove wages are counted once. A *valid* duplicate is not an error.                                                                                                                                                                                                                                                                                                                                                                               |
+| Crypto lot C6 has no basis       | Diagnostic; msg-07                                                                                             | What evidence supports the client's claimed basis and date?                                                                                                                                                                                                                                                                                                                                                                                        |
+| Handwritten receipt              | D64 confidence 0.41; msg-08                                                                                    | Printed value vs extracted vs client confirmation                                                                                                                                                                                                                                                                                                                                                                                                  |
+| S-corporation basis gap          | D39/D40; diagnostic disappears in v3                                                                           | Does the late 2023 K-1 actually close the gap?                                                                                                                                                                                                                                                                                                                                                                                                     |
+| California-source wages          | D73 paystub, mid-year move                                                                                     | Allocation by work and pay period, not a blanket day fraction                                                                                                                                                                                                                                                                                                                                                                                      |
+| California AMT not computed      | `CA_AMT_NOT_COMPUTED`                                                                                        | Owner, evidence and explicit resolution before filing                                                                                                                                                                                                                                                                                                                                                                                              |
+| Questionnaire conflict           | qa-14 "no sales" vs 282 sales and 12 crypto disposals                                                          | Record the client correction                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| Underpayment penalty (Form 2210) | 164 in every version                                                                                           | Check against the Form 2210 rules, not `post_filing_rates` (those apply to late payment after filing). The required annual payment of 41,313 is 110% of the 2024 tax of 37,557, so the prior-year safe harbor governs and an unchanged penalty is expected. Remaining checks: installment timing, how withholding is treated, the annualized alternative (also 164; `penalty_annualized` what-if = 0 change), and the penalty decision record. |
+| Business mixed use               | D15: books charge the family phone plan (4 lines) and home internet at 100%; "Spotify Family" sits in software | call-01 already supplies the percentages: phone 70%, internet 50%, Spotify personal ("booked by mistake"). The task is to evaluate that client statement as evidence, decide, and apply the books-to-tax adjustments, not to ask the client again.                                                                                                                                                                                                 |
+| Home office                      | 240 vs 300 sq ft prior year                                                                                    | Explain the variance                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| Outside filings                  | FBAR, late 1099-NECs (2026-02-02 already missed), Ada's own return                                             | Responsibility and communication, not filing                                                                                                                                                                                                                                                                                                                                                                                                       |
+| Dependent identity               | e-file rejection R0000-504-02 for Theo; D71, msg-10                                                            | Keep submitted, rejected and corrected identities separate                                                                                                                                                                                                                                                                                                                                                                                         |
+| Unextracted documents            | D07, D69, D70, D72                                                                                             | Manual citations at page level                                                                                                                                                                                                                                                                                                                                                                                                                     |
 
 Method: a small script audit (`scripts/audit/`) that (a) normalizes and compares printed values to extracted values, (b) re-derives totals and subtotals from line inputs where the arithmetic is known, (c) checks every `ref:` and FX citation against the tax year, and (d) cross-checks documents that should agree (books ↔ 1099s ↔ deposits, broker summary ↔ lots, payments ↔ agency transcript). Each check that finds something becomes a product check in section 6.
 
@@ -150,14 +151,14 @@ Each check computes its own inputs from the sources, shows them, and produces a 
 
 The role switcher sets the acting identity on the server in a clearly labeled demo. It is not production authentication.
 
-| Role | Can | Cannot |
-| --- | --- | --- |
-| Preparer (st-01, st-04) | Verify, propose adjustments, record judgments, ask questions, hand off | Review or sign off their own work |
-| Reviewer (st-02) | Review, write notes (which can block filing), approve others' work | Approve anything they contributed to |
-| Partner (st-03) | Approve adjustments over $1,000 and final readiness | Bypass separation of duties |
-| Client (client_users) | Answer, attach, view the client summary, approve and authorize | See internal notes, settings or staff edits |
-| Firm administrator (st-05) | Standards, assignments, permissions, budgets, retention | Sign off on tax work |
-| Quality reviewer (st-06) | Inspect frozen records and record findings | Change filed history |
+| Role                       | Can                                                                    | Cannot                                      |
+| -------------------------- | ---------------------------------------------------------------------- | ------------------------------------------- |
+| Preparer (st-01, st-04)    | Verify, propose adjustments, record judgments, ask questions, hand off | Review or sign off their own work           |
+| Reviewer (st-02)           | Review, write notes (which can block filing), approve others' work     | Approve anything they contributed to        |
+| Partner (st-03)            | Approve adjustments over $1,000 and final readiness                    | Bypass separation of duties                 |
+| Client (client_users)      | Answer, attach, view the client summary, approve and authorize         | See internal notes, settings or staff edits |
+| Firm administrator (st-05) | Standards, assignments, permissions, budgets, retention                | Sign off on tax work                        |
+| Quality reviewer (st-06)   | Inspect frozen records and record findings                             | Change filed history                        |
 
 - Clearance is separate from role. Unmasking happens on the server, covering API responses, document text, search, notifications and exports. Every unmasked view is logged. Marcus Bell (st-04) is the demo case.
 - During replay, a person can act only from their `active_from` date.
@@ -184,25 +185,25 @@ Tradeoff to state in the video: PostgreSQL in both environments avoids a later d
 
 All packet IDs and JSON paths are kept. Line keys are scoped to their version.
 
-| Entity | Key fields |
-| --- | --- |
-| PacketImport | original JSON, hash, import report |
-| Document / Page / Extraction | packet fields, disposition and reason, supersedes / duplicate-of |
-| Locator | document, page, anchor (text span or box), resolved flag |
-| Claim | version-scoped line key or extracted-value id, value, evidence / check / review status, area tags, preparers, revision |
-| EvidenceEdge | from, to, kind (source / input / supersedes / duplicate / supports / contradicts), version scope, resolved |
-| Check / CheckResult | rule, derived inputs, expected vs actual, result type, disposition |
-| Verification | claim revision, method (firm verification type), evidence, actor |
-| Adjustment | claim, original, proposed, delta, reason, evidence, category, estimated effect, status |
-| Decision | question, alternatives, choice, authority, rationale, approver, linked what-if |
-| Note / Question | audience, blocking flag, assignee, due date, thread, responses become evidence |
-| SignOff | scope, signer, role, fingerprint of covered claims and standards version, valid / stale with reason |
-| AuditEvent | actor, UTC time, action, subject, before/after, operation id (for bulk actions and undo) |
-| FilingSnapshot | immutable; one per submission attempt (including rejected ones); content hash, jurisdiction, revision, the computation basis of each line (section 8), authorization |
-| Submission | snapshot, agency submission id, status (transmitted / rejected / not transmitted / accepted), errors, link to the earlier submission it corrects |
-| Amendment | parent: the accepted snapshot; a branch of new revisions; never changes the parent |
-| CarryForward | origin snapshot, amount, jurisdiction, next-year status |
-| FirmPolicy / TimeEntry / LastSeen | versioned standards; hours by area against budget; last-seen revision per user and scope |
+| Entity                            | Key fields                                                                                                                                                           |
+| --------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| PacketImport                      | original JSON, hash, import report                                                                                                                                   |
+| Document / Page / Extraction      | packet fields, disposition and reason, supersedes / duplicate-of                                                                                                     |
+| Locator                           | document, page, anchor (text span or box), resolved flag                                                                                                             |
+| Claim                             | version-scoped line key or extracted-value id, value, evidence / check / review status, area tags, preparers, revision                                               |
+| EvidenceEdge                      | from, to, kind (source / input / supersedes / duplicate / supports / contradicts), version scope, resolved                                                           |
+| Check / CheckResult               | rule, derived inputs, expected vs actual, result type, disposition                                                                                                   |
+| Verification                      | claim revision, method (firm verification type), evidence, actor                                                                                                     |
+| Adjustment                        | claim, original, proposed, delta, reason, evidence, category, estimated effect, status                                                                               |
+| Decision                          | question, alternatives, choice, authority, rationale, approver, linked what-if                                                                                       |
+| Note / Question                   | audience, blocking flag, assignee, due date, thread, responses become evidence                                                                                       |
+| SignOff                           | scope, signer, role, fingerprint of covered claims and standards version, valid / stale with reason                                                                  |
+| AuditEvent                        | actor, UTC time, action, subject, before/after, operation id (for bulk actions and undo)                                                                             |
+| FilingSnapshot                    | immutable; one per submission attempt (including rejected ones); content hash, jurisdiction, revision, the computation basis of each line (section 8), authorization |
+| Submission                        | snapshot, agency submission id, status (transmitted / rejected / not transmitted / accepted), errors, link to the earlier submission it corrects                     |
+| Amendment                         | parent: the accepted snapshot; a branch of new revisions; never changes the parent                                                                                   |
+| CarryForward                      | origin snapshot, amount, jurisdiction, next-year status                                                                                                              |
+| FirmPolicy / TimeEntry / LastSeen | versioned standards; hours by area against budget; last-seen revision per user and scope                                                                             |
 
 ### Rules for writes
 
@@ -216,16 +217,17 @@ All packet IDs and JSON paths are kept. Line keys are scoped to their version.
 
 There is no engine rerun, so every line on the return carries a **computation basis**, and the UI, snapshots and exports show it:
 
-| Basis | Meaning |
-| --- | --- |
-| `engine` | v3 value, unaffected by any workpaper adjustment |
-| `recomputed` | Recalculated by our arithmetic from adjusted inputs, using the formula registry below |
-| `affected` | Depends on an adjusted input, but we do not recompute it; the v3 value is shown with an "affected, not recomputed" label |
-| `unresolved` | The engine did not compute it (California AMT), and no conclusion has been recorded yet |
+| Basis          | Meaning                                                                                                                  |
+| -------------- | ------------------------------------------------------------------------------------------------------------------------ |
+| `engine`     | v3 value, unaffected by any workpaper adjustment                                                                         |
+| `recomputed` | Recalculated by our arithmetic from adjusted inputs, using the formula registry below                                    |
+| `affected`   | Depends on an adjusted input, but we do not recompute it; the v3 value is shown with an "affected, not recomputed" label |
+| `unresolved` | The engine did not compute it (California AMT), and no conclusion has been recorded yet                                  |
 
 Tax effect is a separate number, never a line value: each adjustment's estimated effect (change × category rate) is shown once, in the tax summary panel, as federal and California deltas to total tax. Rates estimate tax change only, so they are never applied to AGI, taxable income, QBI or individual credit amounts. Payment adjustments are not rate-based: they change payments and balance due dollar for dollar and are left out of the estimated tax change. Credit adjustments change total tax dollar for dollar, as the packet specifies, so they are applied exactly rather than through a rate.
 
 **1. Formula registry (what we recompute).** A small, explicit list of formulas, only for the arithmetic the demo needs, for example:
+
 - Document-to-line mappings: W-2 box sums, payer interest and dividend lines, books lines to Schedule C, rental lines.
 - Form 8949 rows rolling up to box totals and Schedule D.
 - Schedule C gross receipts, meals at 50%, mileage, simplified home office, cash and noncash gifts, depreciation sums.
@@ -239,6 +241,7 @@ Each registry formula is checked once against the supplied versions (it must rep
 For the summary, total tax shown = v3 total tax + the sum of each rate-based adjustment's estimated effect (plus credit adjustments dollar for dollar), counted once, labeled an estimate with its limits (rates measured at v3, thresholds can be crossed, interactions not modeled). Payments are reconciled separately and exactly, including any payment adjustments: balance due = estimated total tax − payments.
 
 **3. How estimates affect simulated filing.** The required step "Final computation" has two possible resolutions:
+
 - **(a) Engine recompute.** Not available in this case study. It is the production path: the adjustment set is exported as engine input overrides.
 - **(b) Partner decision.** A partner records "accept estimated computation for simulated filing". The decision states the total estimated change, the largest contributors and their limits.
 
@@ -252,12 +255,12 @@ Assumes about **10 working days** to submission. The order puts thin coverage of
 
 ### Day 0–1: audit and foundation
 
-- [x] Finish the Day 0–1 audit: 14 proposed discrepancies, a frozen demo sequence, and documented dispositions for every original lead. Tax judgments remain explicit later-story tasks; see `docs/audit-findings.md`.
-- [x] Repo setup: `.gitignore`, backend and frontend skeletons, local PostgreSQL via Docker Compose, `DATABASE_URL` configuration, Alembic migrations, and documented startup commands.
-- [x] Import the packet unmodified; build claims, evidence edges and the document index. Automatic anchors resolve 2,672 / 3,012 values; manual source-selection UI and persisted anchors cover unresolved fields. Original data and manual anchors survive derived-data refresh.
-- [x] Build the initial formula registry and check each formula against v3 (11 explicit formulas; see `docs/day-0-1-status.md`).
-- [x] Role switcher, server-side permissions and masking from the start (verified through live local API checks).
-- [x] Build and test locally; keep database and storage settings environment-configurable. Defer Heroku setup until the working prototype is ready. TypeScript/Vite build and local HTTP smoke checks passed; visual browser review remains pending.
+- [X] Finish the Day 0–1 audit: 14 proposed discrepancies, a frozen demo sequence, and documented dispositions for every original lead. Tax judgments remain explicit later-story tasks; see `docs/audit-findings.md`.
+- [X] Repo setup: `.gitignore`, backend and frontend skeletons, local PostgreSQL via Docker Compose, `DATABASE_URL` configuration, Alembic migrations, and documented startup commands.
+- [X] Import the packet unmodified; build claims, evidence edges and the document index. Automatic anchors resolve 2,672 / 3,012 values; manual source-selection UI and persisted anchors cover unresolved fields. Original data and manual anchors survive derived-data refresh.
+- [X] Build the initial formula registry and check each formula against v3 (11 explicit formulas; see `docs/day-0-1-status.md`).
+- [X] Role switcher, server-side permissions and masking from the start (verified through live local API checks).
+- [X] Build and test locally; keep database and storage settings environment-configurable. Defer Heroku setup until the working prototype is ready. TypeScript/Vite build and local HTTP smoke checks passed; visual browser review remains pending.
 
 ### Day 2–3, Story A: "Trace and correct" (E1 sweep interest)
 
@@ -297,14 +300,15 @@ Covers: filing and after, freeze and amend, notice response, carry forward.
 ### Day 7–8: breadth pass
 
 Make every remaining requirement work, even simply:
-- [ ] Remaining required views: depreciation by asset, rentals and passive losses, K-1 lines, basis by year, retirement and foreign items, deductions and credits with limits, payments vs transcripts, state split, carryovers, prior preparer vs our changes.
-- [ ] State-split check: D73 paystub allocation.
-- [ ] Assignments, deadlines (from `firm.deadlines`), in-app notifications, two-session conflict demo.
-- [ ] Firm standards editor (versioned; changes reopen only affected sign-offs), access log, time vs budget, search, retention as configuration showing eligibility and holds. Records are never actually deleted.
-- [ ] Quality reviewer view of the frozen return.
-- [ ] Every outside filing and every document disposed of; completeness indicator.
 
-Use a requirement checklist (one row per brief bullet → screen → working yes/no) to track this.
+- [x] Remaining required views: depreciation by asset, rentals and passive losses, K-1 lines, basis by year, retirement and foreign items, deductions and credits with limits, payments vs transcripts, state split, carryovers, prior preparer vs our changes.
+- [x] State-split check: D73 paystub allocation.
+- [x] Assignments, deadlines (from `firm.deadlines`), in-app notifications, two-session conflict demo.
+- [x] Firm standards editor (versioned; changes reopen only affected sign-offs), access log, time vs budget, search, retention as configuration showing eligibility and holds. Records are never actually deleted.
+- [x] Quality reviewer view of the frozen return.
+- [x] Disposition and responsibility workflows for every available document and outside filing, area consideration, and a computed completeness indicator. Genuine review work remains open until performed.
+
+**Implemented October 23, 2026:** eleven generated tax views; D73 reconciliation with explicit supported judgment and partner-reviewed correction; colleague questions as evidence; versioned assignments, deadlines, polling updates and conflict recovery; administrator standards with selective invalidation, access logs, time/budget, masked search, retention eligibility/holds; frozen-return quality findings gated by activation date; and document/outside/area completeness gates. Existing PostgreSQL records support these features without a new migration. All 35 backend/PostgreSQL tests, TypeScript/Vite build and local HTTP smoke checks passed. No live approvals or submissions were manufactured. See [walkthrough and validation](docs/day-7-8-status.md) and [one-row-per-brief-bullet coverage](docs/requirement-checklist.md). Visual browser review remains pending.
 
 ### Day 9: harden and write
 
@@ -337,7 +341,6 @@ If time runs short, cut depth, never breadth. Keep every capability working simp
 ## 11. Out of scope
 
 Multi-client practice management; real authentication and tenant isolation; email/SMS; real e-file and e-signature; tax-engine recomputation; actually destroying records.
-
 
 ### Day 0–1 implementation status
 

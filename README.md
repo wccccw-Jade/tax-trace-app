@@ -1,6 +1,6 @@
 # Miraflores workpaper
 
-Day 0–1 foundation and Stories A–E (through Day 6–7) for the Okafor–Lindqvist case study. Local development only; no deployment has been performed.
+Day 0–1 foundation, Stories A–E and the Day 7–8 breadth pass for the Okafor–Lindqvist case study. Local development only; no deployment has been performed.
 
 ## Prerequisites
 
@@ -8,7 +8,7 @@ Day 0–1 foundation and Stories A–E (through Day 6–7) for the Okafor–Lind
 - Node.js 22.12+ (or Node 24 LTS) and npm for React/Vite.
 - Docker Desktop (running), including Docker Compose. PostgreSQL 17 runs in the `db` container; no native PostgreSQL installation is needed.
 
-Node.js 24 and the frontend dependencies are installed; the TypeScript/Vite production build passed and `frontend/package-lock.json` is available. Docker PostgreSQL is running with the imported packet. All 28 backend tests passed with PostgreSQL, and live HTTP checks verified the frontend/API connection, role switching, masking and database readiness. Browser visual verification remains blocked because Computer Use permission is not granted. Saved source anchors, revisions, sessions and import records were verified after restarting both the app and PostgreSQL.
+Node.js 24 and the frontend dependencies are installed; the TypeScript/Vite production build passed and `frontend/package-lock.json` is available. Docker PostgreSQL is running with the imported packet. All 35 backend/PostgreSQL tests passed, and live HTTP checks verified the frontend/API connection, role switching, masking and database readiness. Browser visual verification remains blocked because Computer Use permission is not granted. Saved source anchors, revisions, sessions and import records were verified after restarting both the app and PostgreSQL.
 
 ## Local setup
 
@@ -67,7 +67,7 @@ Manual source anchoring is available in the evidence drawer: open a document or 
 
 The Day 0–1 audit identified 14 proposed discrepancies and documented all original investigation leads. Remaining tax judgments are explicitly assigned to later workpaper workflows, not assumed resolved.
 
-Story A adds evidence-bound verification, correction proposals, independent approval/rejection, document dispositions and an approved-only estimated summary. Story B adds a business-income bridge, partner approval and reopening when supporting evidence changes. Story C adds client questions, private attachments, reviewed judgments and reversible bulk verification. Story D adds version comparison, per-user change tracking, independent what-if previews and prior-year variance explanations. Story E adds computed readiness, exact-draft approvals, immutable simulated submissions, rejection/correction/acceptance, exports, amendment branches and post-filing models. The remaining breadth features and production deployment remain follow-up work. They remain follow-up tasks in `plan.md`.
+Story A adds evidence-bound verification, correction proposals, independent approval/rejection, document dispositions and an approved-only estimated summary. Story B adds a business-income bridge, partner approval and reopening when supporting evidence changes. Story C adds client questions, private attachments, reviewed judgments and reversible bulk verification. Story D adds version comparison, per-user change tracking, independent what-if previews and prior-year variance explanations. Story E adds computed readiness, exact-draft approvals, immutable simulated submissions, rejection/correction/acceptance, exports, amendment branches and post-filing models. Day 7–8 adds generated tax views, team coordination, firm controls, search, completeness and quality review. Production deployment and final submission artifacts remain follow-up tasks in `plan.md`.
 
 ## Story A: trace and correct
 
@@ -88,7 +88,7 @@ make dev
 
 The summary excludes pending, rejected and reopened corrections. Only registered arithmetic is recomputed; unsupported downstream lines retain their original values with an `affected` label. Review/verification history records actors, evidence, times, reasons and status. Changed source revisions invalidate evidence-bound verification. Approvals with a tax effect over $1,000 require an independent partner.
 
-Tests use isolated PostgreSQL schemas and do not pre-approve the correction in your demo database. Full filing readiness, broad review notes, amendment/export and the remaining stories are still pending.
+Tests use isolated PostgreSQL schemas and do not pre-approve corrections in your demo database. The later filing, review-note and amendment/export workflows are described below.
 
 ## Story B: business income and partner review
 
@@ -159,3 +159,16 @@ Heroku setup is deferred until the prototype is ready. Use Heroku Postgres plus 
 - Fixture: `okafor_lindqvist_2025_packet.json`, unchanged.
 - Implementation uses FastAPI, SQLAlchemy, Alembic, React and Vite. AI assisted code/audit drafting; automated checks are documented in `docs/day-0-1-status.md`.
 - Setup references: [Vite guide](https://vite.dev/guide/), [FastAPI tutorial](https://fastapi.tiangolo.com/tutorial/), [SQLAlchemy ORM guide](https://docs.sqlalchemy.org/en/21/orm/quickstart.html).
+
+## Day 7–8: tax views and workspace controls
+
+Restart `make dev`. No additional migration is required beyond `0005`.
+
+- **Tax views:** eleven read-only tax/area views with claim/source drill-down, including the D73 state-wage reconciliation. Supported allocation changes use an explicit judgment, verification and independent review.
+- **Team & deadlines / Updates:** durable assignments, packet deadlines, time vs budget, polling notifications and recoverable two-session conflicts.
+- **Completeness:** documents, 13 considered areas and six outside/related responsibilities. Missing coverage blocks original-return filing; scope acknowledgments never verify claims automatically.
+- **Firm standards:** Jo edits versioned methods, thresholds, required steps and retention; relevant reviews go stale. Retention-only changes preserve tax review. Administrators can inspect logs and set retention holds; deletion is disabled.
+- **Questions:** assigned clients or colleagues can answer with files as evidence. Internal threads remain private from clients; material staff contributors cannot approve their own work.
+- **Search / Quality review:** clearance-aware, replay-aware search and immutable submitted-copy review. Sam becomes active on January 4, 2027; quality findings never change the frozen return.
+
+See [the walkthrough and limitations](docs/day-7-8-status.md) and [brief coverage checklist](docs/requirement-checklist.md). The live workspace retains genuine open review work and no test approvals are copied into it.

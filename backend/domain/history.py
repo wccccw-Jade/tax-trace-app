@@ -8,6 +8,7 @@ from backend.persistence.models import Record, AuditEvent, Adjustment, LastSeen
 from backend.domain.workpaper import projected_summary, evidence_graph
 
 MUTATIONS={
+    'area_considered','assignment_updated','outside_filing_updated','time_recorded','standards_updated','retention_hold_updated','quality_finding_recorded',
     'manual_anchor','verification_recorded','adjustment_proposed','adjustment_approved','adjustment_rejected',
     'document_disposition','approval_reopened','question_asked','client_answered','question_resolved',
     'decision_recorded','decision_approved','decision_rejected','bulk_claim_verified','bulk_verified',
@@ -112,7 +113,8 @@ def variance_values(prior,current,percent_limit=10,amount_limit=1000):
 def variances(db,packet):
     prior=packet.data['prior_years']['return_2024']
     current=snapshot(db,packet,'workpaper')['lines']
-    thresholds=packet.data['firm']['starter_standards']['variance_review']
+    from backend.domain.policy import standards
+    thresholds=standards(db,packet)['variance_review']
     percent=thresholds['flag_if_change_over_percent']
     amount=thresholds['and_over_amount']
     notes={}

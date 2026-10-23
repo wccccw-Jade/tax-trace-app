@@ -10,6 +10,7 @@ from backend.domain.workpaper import fingerprint,evidence_graph,contributor_ids,
 from backend.domain.history import snapshot
 from backend.domain.formulas import D,FORMULAS,check_registry
 from backend.domain.audit import run_audit
+from backend.domain.policy import standards,tax_policy
 
 START='2026-07-10T20:05:00Z'
 AUTO_STEPS={'Reviewer sign-off','Partner sign-off','Client approval and e-file authorization'}
@@ -52,7 +53,7 @@ def available(packet,ref,as_of,records=None):
     if ref=='agency:/efile':
         return as_of>='2026-07-13T17:04:00Z'
     if isinstance(value,dict):
-        arrived=value.get('received_at') or value.get('sent_at') or (value.get('date') if ref.startswith('agency:') else value.get('at') if ref.startswith('timeline:') else None)
+        arrived=value.get('received_at') or value.get('sent_at') or (value.get('as_of') if ref.startswith('agency:') else None) or (value.get('date') if ref.startswith('agency:') else value.get('at') if ref.startswith('timeline:') else None)
         if arrived and arrived>as_of:
             return False
         if value.get('document_id'):
@@ -202,7 +203,7 @@ def state(db,packet,row):
             return valid
         if not proof:
             for check in checks.get(record.id,[]):
-                if check.reversed_at:
+                if check.reversed_at or check.method not in standards(db,packet)['verification_types']:
                     continue
                 refs=check.evidence
                 located=all(r not in records or records[r].kind!='extraction' or records[r].payload.get('locator',{}).get('resolved') for r in refs)
@@ -244,20 +245,33 @@ def state(db,packet,row):
         for diagnostic in packet.data['return_versions'][-1]['diagnostics']:
             if diagnostic['severity']=='warning' and not resolution('diagnostic:'+diagnostic['code'],None):
                 issues.append({'ref':'diagnostic:'+diagnostic['code'],'label':diagnostic['message'],'value':None})
+    wage_decision=any(p['claim_ref']=='v3:SchCA540NR.1.E' and p.get('reviews') and
+        any(e in p['evidence'] for e in ('D73','doc:D73#page1','ev-1081')) and
+        p['reviews'][-1]['fingerprint']==fingerprint(db,packet,records[p['claim_ref']],lines['SchCA540NR.1.E']['value'],p['evidence'],graph)
+        for p in (r.payload for r in decisions))
+    if not is_amendment and not wage_decision and not resolution('check:CA_WAGES_D73',None):
+        issues.append({'ref':'check:CA_WAGES_D73','label':'Reconcile D73 paystub wages with annual California wages, work dates and HSA treatment','value':None})
     open_questions=[r.ref for r in records.values() if r.kind=='question' and r.payload['status']!='resolved'] if not is_amendment else []
     notes=[{'ref':r.ref,'revision':r.revision,**r.payload} for r in records.values() if r.kind=='filing_note' and r.payload['branch_ref']==row.ref]
     branch_changes=[{**c,'status':'stale' if c['status']=='approved' and c.get('fingerprint')!=change_fingerprint(db,packet,c) else c['status']} for c in row.payload.get('changes',[])]
     preparers.update(c['actor_id'] for c in branch_changes)
     preparers.update(r.payload['actor_id'] for r in records.values() if r.kind=='filing_resolution' and r.payload['branch_ref']==row.ref)
     preparers.update(s['actor_id'] for s in row.payload.get('steps',{}).values())
-    required=[s for s in packet.data['firm']['starter_standards']['required_steps'] if s not in AUTO_STEPS]
+    required=[s for s in standards(db,packet)['required_steps'] if s not in AUTO_STEPS]
     steps=[{'name':name,'done':name in row.payload.get('steps',{})} for name in required]
     pending_adjustments=[]
     if not is_amendment:
         for a,r in db.execute(select(Adjustment,Record).join(Record,Record.id==Adjustment.record_id).where(Record.packet_id==packet.digest,Adjustment.status.in_(['proposed','reopened','approved']))):
             if a.status!='approved' or not approval_is_current(db,packet,r,a):
                 pending_adjustments.append(r.ref)
+    coverage=None
+    if not is_amendment:
+        from backend.domain.breadth import completeness
+        coverage=completeness(db,packet)
     technical=[]
+    if coverage:
+        technical.extend({'kind':'area','ref':'area:'+a['id'],'label':a['title']+' needs a scope conclusion'} for a in coverage['areas'] if not a['done'])
+        technical.extend({'kind':'outside','ref':a['ref'],'label':a['label']+' needs responsibility and communication recorded'} for a in coverage['outside'] if not a['done'])
     technical.extend({'kind':'claim',**c} for c in claim_rows if not c['done'])
     technical.extend({'kind':'document',**d} for d in documents if not d['done'])
     technical.extend({'kind':'issue',**i} for i in issues)
@@ -268,13 +282,13 @@ def state(db,packet,row):
     if is_amendment and not any(c['status']=='approved' for c in branch_changes):
         technical.append({'kind':'branch_change','ref':'new_amendment_change','label':'Record and independently approve an amendment correction'})
     technical.extend({'kind':'branch_change','ref':c['id'],'label':'Branch correction awaiting independent review'} for c in branch_changes if c['status'] in {'proposed','stale'})
-    source_revisions=sorted((r.ref,r.revision) for r in records.values() if r.kind in {'document','extraction','client_evidence','client_answer','attachment','household','decision','filing_resolution'} and available(packet,r.ref,row.payload['as_of'],records)) if not is_amendment else []
+    source_revisions=sorted((r.ref,r.revision) for r in records.values() if r.kind in {'document','extraction','client_evidence','client_answer','attachment','household','decision','filing_resolution','outside_filing','area_review'} and available(packet,r.ref,row.payload['as_of'],records)) if not is_amendment else []
     if is_amendment:
         from types import SimpleNamespace
         changed_sources={r.ref:r for c in branch_changes for r in scope_records(db,packet,SimpleNamespace(ref='_branch_change'),c['evidence'])}
         source_revisions=sorted((r.ref,r.revision) for r in changed_sources.values())
     fp=digest({'lines':lines,'summary':summary,'household':household,'changes':branch_changes,'steps':row.payload.get('steps',{}),
-        'sources':source_revisions,'proofs':proof_details,'blockers':technical,'policy':packet.data['firm']['starter_standards'],'parent':row.payload.get('parent_snapshot')})
+        'sources':source_revisions,'proofs':proof_details,'blockers':technical,'policy':tax_policy(db,packet),'parent':row.payload.get('parent_snapshot')})
     signoffs=[r for r in records.values() if r.kind=='filing_signoff' and r.payload['branch_ref']==row.ref]
     current_signoffs={r.payload['kind']:r for r in signoffs if r.payload['fingerprint']==fp}
     approvals=[r for r in records.values() if r.kind=='filing_authorization' and r.payload['branch_ref']==row.ref]

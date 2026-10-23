@@ -2,6 +2,8 @@ import React, {useEffect, useRef, useState} from 'react';
 import {createRoot} from 'react-dom/client';
 import './style.css';
 import {api} from './api';
+import {GeneratedViews,Team,Completeness,WorkspaceSearch,Notifications} from './Workspace';
+import {Firm,QualityReview} from './Firm';
 import {Questions, ClaimCollaboration} from './Collaboration';
 import {Filing} from './Filing';
 import {History} from './History';
@@ -21,10 +23,16 @@ type Statuses = Record<string,{status:string; proposed_value:string}>;
 type Report = {counts:Record<string,number>; locators:{resolved:number;total:number}; findings:Finding[]};
 const money = (value:string|number) => Number(value).toLocaleString('en-US',{style:'currency',currency:'USD',maximumFractionDigits:0});
 const pages:Record<string,{title:string; description:string; icon:string}> = {
+  views:{title:'Tax views',description:'Read source-backed schedules across the return, with calculation limits clearly labeled.',icon:'chart'},
+  team:{title:'Team & deadlines',description:'Assign the next step, track deadlines, and record time against budget.',icon:'briefcase'},
+  completeness:{title:'Completeness',description:'Account for documents and responsibilities outside the engagement.',icon:'check'},
+  search:{title:'Search',description:'Find available evidence, return lines and saved review work.',icon:'search'},
+  firm:{title:'Firm standards',description:'Review standards, policy history, access and retention.',icon:'sliders'},
+  quality:{title:'Quality review',description:'Inspect frozen submitted returns and record separate quality findings.',icon:'check'},
   queue:{title:'Review workspace',description:'Resolve discrepancies, check the evidence, and send corrections for review.',icon:'check'},
   business:{title:'Business income',description:'Follow the difference between the books and the return, one step at a time.',icon:'briefcase'},
   sales:{title:'Investment sales',description:'Review sales together. Keep exceptions separate until their evidence is complete.',icon:'chart'},
-  questions:{title:'Client questions',description:'Ask for missing information and keep the answers with the work they support.',icon:'message'},
+  questions:{title:'Questions',description:'Ask clients or colleagues for missing information and keep answers with the work they support.',icon:'message'},
   documents:{title:'Evidence library',description:'Find a source document, inspect its extracted values, and record how it was used.',icon:'file'},
   history:{title:'Changes & history',description:'Compare versions and see who changed what, with the supporting evidence.',icon:'clock'},
   whatif:{title:'Explore a scenario',description:'Preview the effect of a change before proposing it for the workpaper.',icon:'sliders'},
@@ -132,7 +140,7 @@ function App() {
   const waiting=queue.filter(f=>['proposed','judgment_proposed'].includes(statuses[f.ref]?.status)).length;
   const visible=queue.filter(f=>(filter==='all'||(filter==='done'?complete(statuses[f.ref]?.status):filter==='waiting'?['proposed','judgment_proposed'].includes(statuses[f.ref]?.status):!complete(statuses[f.ref]?.status))))
     .filter(f=>(f.title+' '+(findingCopy[f.id]?.title??'')+' '+f.id+' '+f.claim).toLowerCase().includes(queueQuery.toLowerCase()));
-  const navGroups=client?[{label:'Your return',keys:['questions','filing']}]:[{label:'Work on the return',keys:['queue','business','sales','questions','documents']},{label:'Compare & explore',keys:['history','whatif','prior']},{label:'Finish',keys:['filing']}];
+  const navGroups=client?[{label:'Your return',keys:['questions','filing']}]:[{label:'Work on the return',keys:['queue','business','sales','questions','documents']},{label:'Compare & explore',keys:['history','whatif','prior']},{label:'Finish',keys:['completeness','filing']},{label:'Workspace',keys:['views','team','search','firm',...(['partner','quality_reviewer'].includes(actor?.role??'')?['quality']:[])]}];
   const numericClaim=actor&&trace?.kind==='claim'&&trace.ref.startsWith('v3:')&&typeof trace.value.value==='number';
   const follow=(ref:string)=>void open(ref,true);
   return <div className="app">
@@ -144,7 +152,7 @@ function App() {
       <div className="aside-bottom"><span className="demo-label"><span className="dot"/>Prototype workspace</span><p>Synthetic case study.<br/>Filing actions are simulated.</p></div>
     </aside>
     <main id="main-content">
-      <header className="topbar"><div className="breadcrumb">Workspace <span>/</span> <strong>2025 return</strong></div><label className="identity"><span>Demo identity</span><select value={actor?.id||''} onChange={e=>void switchRole(e.target.value)}><option value="" disabled>Choose identity</option>{actors.map(a=><option key={a.id} value={a.id}>{a.name} · {a.role.replaceAll('_',' ')}</option>)}</select></label></header>
+      <header className="topbar"><div className="breadcrumb">Workspace <span>/</span> <strong>2025 return</strong></div>{actor&&!client&&<Notifications key={actor.id} actor={actor} onNavigate={navigate}/>}<label className="identity"><span>Demo identity</span><select value={actor?.id||''} onChange={e=>void switchRole(e.target.value)}><option value="" disabled>Choose identity</option>{actors.map(a=><option key={a.id} value={a.id}>{a.name} · {a.role.replaceAll('_',' ')}</option>)}</select></label></header>
       <section className="intro"><div><p className="eyebrow">{client?'YOUR RETURN, TOGETHER':'OKAFOR–LINDQVIST / 2025'}</p><h1>{client?(tab==='filing'?'Approve & download':'Your questions'):pages[tab].title}</h1><p>{client?'Your team will guide you through the information and approvals they need.':pages[tab].description}</p></div><span className="pill">{client?'Client view':'Engine v3 · Working draft'}</span></section>
       {error&&<div role="alert" className="error">{error}</div>}
       {!actor&&!error&&<div className="empty">Choose a demo identity above to open the workspace.</div>}
@@ -162,7 +170,13 @@ function App() {
           <div className="findings">{visible.map(f=><article className="finding" key={f.id}><span className="finding-id">{f.id}</span><div className="finding-body"><div className="finding-topline"><span className={'status '+(statuses[f.ref]?.status??'needs_evidence')}>{f.id==='C6'&&!statuses[f.ref]?'Needs client evidence':statusLabel(statuses[f.ref]?.status)}</span><span className="record-ref">{f.claim}</span></div><h3><button className="text-button" onClick={()=>void open(f.new_claim?f.evidence[0]:f.ref)}>{findingCopy[f.id]?.title??f.title}</button></h3>{findingCopy[f.id]&&<p className="finding-explanation">{findingCopy[f.id].why}</p>}{f.id==='C6'?<p className="finding-description">Confirm the original purchase cost and date with the client before deciding the treatment.</p>:<p className="finding-description">Return shows <strong>{findingValue(f,f.observed)}</strong><span className="value-arrow">→</span>Evidence suggests <strong>{findingValue(f,f.proposed)}</strong></p>}<div className="evidence">{f.evidence.map(ref=><button key={ref} onClick={()=>void open(ref)}><Icon name="file"/>{ref}</button>)}</div></div><button className="review-button" aria-label={'Review '+(findingCopy[f.id]?.title??f.title)} onClick={()=>void open(f.new_claim?f.evidence[0]:f.ref)}>Review <Icon name="arrow"/></button></article>)}{!visible.length&&<div className="empty"><h3>No findings in this view</h3><p>Try another filter or search term.</p><button className="secondary" onClick={()=>{setFilter('all');setQueueQuery('');}}>Show all findings</button></div>}</div>
         </>}
         {tab==='documents'&&<><div className="library-summary"><Icon name="file"/><span><strong>{docs.length} documents available</strong> in the current workspace</span></div><label className="search-box library-search"><Icon name="search"/><input aria-label="Search documents" placeholder="Search by document title or ID…" value={query} onChange={e=>setQuery(e.target.value)}/></label><div className="documents">{docs.filter(d=>(d.ref+' '+d.payload.title).toLowerCase().includes(query.toLowerCase())).map(d=><button key={d.ref} onClick={()=>void open(d.ref)}><span className="document-icon"><Icon name="file"/></span><span className="document-title"><strong>{d.payload.title}</strong><small>{d.ref} · {d.payload.extraction.status.replaceAll('_',' ')}</small></span><Icon name="arrow"/></button>)}</div>{!docs.some(d=>(d.ref+' '+d.payload.title).toLowerCase().includes(query.toLowerCase()))&&<div className="empty">No documents match “{query}”. Try a different title or ID.</div>}</>}
-        {tab==='filing'&&<Filing actor={actor} refresh={refresh} onSaved={refreshWork} onOpen={ref=>void open(ref)}/>}
+        {tab==='views'&&<GeneratedViews onOpen={ref=>void open(ref)}/>}
+        {tab==='team'&&<Team key={actor.id} actor={actor} actors={actors}/>}
+        {tab==='completeness'&&<Completeness key={actor.id} actor={actor} onOpen={ref=>void open(ref)}/>}
+        {tab==='search'&&<WorkspaceSearch onOpen={ref=>void open(ref)}/>}
+        {tab==='firm'&&<Firm key={actor.id} actor={actor}/>}
+        {tab==='quality'&&<QualityReview key={actor.id} actor={actor}/>}
+        {tab==='filing'&&<><p><button className="secondary" onClick={()=>navigate('completeness')}>Review area and outside-filing blockers</button></p><Filing actor={actor} refresh={refresh} onSaved={refreshWork} onOpen={ref=>void open(ref)}/></>}
         {tab==='history'&&<History actor={actor} refresh={refresh} onOpen={ref=>void open(ref)}/>}
         {tab==='whatif'&&<WhatIf key={actor.id+':'+whatIfRef} actor={actor} refresh={refresh} initialRef={whatIfRef} onSaved={refreshWork} onOpen={ref=>void open(ref)}/>}
         {tab==='prior'&&<PriorYear actor={actor} refresh={refresh} onSaved={refreshWork} onOpen={ref=>void open(ref)}/>}

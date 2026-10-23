@@ -7,6 +7,7 @@ from fastapi import HTTPException
 from sqlalchemy import select, func
 from backend.persistence.models import Record, Edge, Verification, Adjustment, AdjustmentReview
 from backend.domain.formulas import D, FORMULAS, check_registry, tax_effect
+from backend.domain.policy import standards
 
 
 def now():
@@ -105,6 +106,8 @@ def current_values(db, record, packet=None):
 
 def category_for(packet, record):
     key=record.payload['key']
+    if key=='SchCA540NR.1.E':
+        return 'ca_source_income'
     if key=='F8949.H.C6':
         return 'stcg'
     if key.startswith('SchB.1.') or key in {'SchB.2','SchB.4','F1040.2b'}:
@@ -135,18 +138,25 @@ def estimated_effect(packet, record, proposed, category):
     if key in {'F8949.B.N1','F8949.B.N3'}:
         result['california']=tax_effect(D(proposed)-D(record.payload['value']),'ca_source_income',rates)['california']
     changes={j:result[j] for j in ('federal','california')}
+    if key=='SchCA540NR.1.E':changes['federal']='0'
     return {'basis':'estimated','kind':'tax','tax_change':changes,'balance_change':changes,'note':'Measured at v3; thresholds and interactions are not recomputed.'}
 
 
 
-def requires_partner(change):
-    return max(abs(D(value)) for value in change.effect['tax_change'].values())>1000
+def requires_partner(change,db=None,packet=None):
+    threshold=standards(db,packet)['partner_threshold'] if db is not None else 1000
+    return max(abs(D(value)) for value in change.effect['tax_change'].values())>D(threshold)
 
 
 def approval_is_current(db, packet, record, change):
     review=db.scalar(select(AdjustmentReview).where(AdjustmentReview.adjustment_id==change.id,
         AdjustmentReview.decision=='approved').order_by(AdjustmentReview.id.desc()))
-    return bool(review and review.fingerprint==fingerprint(db,packet,record,change.proposed_value,review.evidence))
+    if not review or review.fingerprint!=fingerprint(db,packet,record,change.proposed_value,review.evidence):return False
+    from backend.domain.security import actor_by_id
+    if requires_partner(change,db,packet) and actor_by_id(packet,review.actor_id)['role']!='partner':return False
+    methods=standards(db,packet)['verification_types']
+    checks=list(db.scalars(select(Verification).where(Verification.record_id==record.id)))
+    return any(not v.reversed_at and v.method in methods and v.fingerprint==fingerprint(db,packet,record,change.proposed_value,list(dict.fromkeys([*v.evidence,*review.evidence])) ) for v in checks)
 
 
 def reopen_change(db, packet, record, change, actor_id, source_ref, source_revision, reason):
@@ -186,7 +196,7 @@ def workflow(db, packet, record):
     checks=[]
     for v in db.scalars(select(Verification).where(Verification.record_id==record.id).order_by(Verification.id.desc())):
         scope=list(dict.fromkeys([*v.evidence,*refs]))
-        current=not v.reversed_at and v.fingerprint==fingerprint(db,packet,record,value,scope)
+        current=not v.reversed_at and v.method in standards(db,packet)['verification_types'] and v.fingerprint==fingerprint(db,packet,record,value,scope)
         checks.append({'id':v.id,'actor_id':v.actor_id,'method':v.method,'note':v.note,'evidence':v.evidence,'value':v.value,'at':v.at,'current':current,'subject_revision':v.subject_revision,'operation_id':v.operation_id,'reversed_at':v.reversed_at,'reversed_by':v.reversed_by})
     changes=[]
     for a in adjustments_for(db,record):
@@ -195,7 +205,7 @@ def workflow(db, packet, record):
             reviews.append({'actor_id':review.actor_id,'decision':review.decision,'note':review.note,'at':review.at,
                             'current':review.fingerprint==fingerprint(db,packet,record,a.proposed_value,review.evidence)})
         decision_ref=db.scalar(select(Record.ref).where(Record.packet_id==packet.digest,Record.kind=='decision',Record.payload['adjustment_id'].as_integer()==a.id))
-        changes.append({'decision_ref':decision_ref,'id':a.id,'actor_id':a.actor_id,'original_value':a.original_value,'proposed_value':a.proposed_value,'reason':a.reason,'category':a.category,'evidence':a.evidence,'effect':a.effect,'status':a.status,'at':a.at,'reviews':reviews,'requires_partner':requires_partner(a),
+        changes.append({'decision_ref':decision_ref,'id':a.id,'actor_id':a.actor_id,'original_value':a.original_value,'proposed_value':a.proposed_value,'reason':a.reason,'category':a.category,'evidence':a.evidence,'effect':a.effect,'status':a.status,'at':a.at,'reviews':reviews,'requires_partner':requires_partner(a,db,packet),
                         'approval_current':approval_is_current(db,packet,record,a) if a.status=='approved' else False,
                         'reopen_events':[e for e in record.payload.get('review_events',[]) if e['adjustment_id']==a.id]})
     try:
@@ -203,7 +213,7 @@ def workflow(db, packet, record):
     except HTTPException:
         category=None
     return {'ref':record.ref,'revision':record.revision,'engine_value':engine,'approved_value':applied,'review_value':value,
-            'verification_methods':packet.data['firm']['starter_standards']['verification_types'],
+            'verification_methods':standards(db,packet)['verification_types'],'partner_threshold':standards(db,packet)['partner_threshold'],
             'verifications':checks,'adjustments':changes,'preparers':sorted(contributor_ids(db,packet,record,refs)),
             'category':category}
 

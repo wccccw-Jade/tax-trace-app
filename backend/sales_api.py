@@ -8,6 +8,7 @@ from backend.dependencies import packet, staff, respond, imported
 from backend.persistence.db import session
 from backend.persistence.models import Record, Verification, AuditEvent
 from backend.domain.sales import sales_checks
+from backend.domain.policy import standards
 from backend.domain.workpaper import get_record, require_preparation, mark_preparer, now, projected_summary
 
 router=APIRouter(prefix='/api/sales')
@@ -51,6 +52,8 @@ def sales(actor=Depends(staff),db:Session=Depends(session)):
 def bulk_verify(body:BulkWrite,actor=Depends(staff),db:Session=Depends(session)):
     require_preparation(actor)
     imported(db)
+    if 'agreed_to_source_document' not in standards(db,packet())['verification_types']:
+        raise HTTPException(422,'Firm policy does not permit this bulk verification method; verify the claims using a permitted method')
     selected=set(body.refs)
     # Lock the subjects before rebuilding the selection from current evidence.
     records=list(db.scalars(select(Record).where(Record.packet_id==packet().digest,Record.ref.in_(selected)).order_by(Record.id).with_for_update()))

@@ -11,6 +11,8 @@ from backend.persistence.models import Record, Edge, AuditEvent, Verification, A
 from backend.domain.workpaper import (now, require_preparation, get_record, evidence_refs, mark_preparer,
     fingerprint, contributor_ids, adjustments_for, current_values, category_for, estimated_effect, workflow, projected_summary, requires_partner, approval_is_current, reopen_change, reopen_affected_approvals)
 
+from backend.domain.policy import standards
+
 router=APIRouter(prefix='/api/workpaper')
 
 class EvidenceWrite(BaseModel):
@@ -108,7 +110,7 @@ def verify(ref:str,body:VerificationWrite,actor=Depends(staff),db:Session=Depend
     record=get_record(db,packet(),ref,body.expected_revision,lock=True)
     if record.kind!='claim' or record.payload.get('version')!='v3':
         raise HTTPException(422,'Verification is available on current v3 claims')
-    methods=packet().data['firm']['starter_standards']['verification_types']
+    methods=standards(db,packet())['verification_types']
     if body.method not in methods:
         raise HTTPException(422,'Unknown firm verification method')
     pending,approved,engine,applied=current_values(db,record,packet())
@@ -134,7 +136,7 @@ def propose(ref:str,body:ProposalWrite,actor=Depends(staff),db:Session=Depends(s
     record=get_record(db,packet(),ref,body.expected_revision,lock=True)
     if record.kind!='claim' or record.payload.get('version')!='v3' or not isinstance(record.payload.get('value'),(int,float)) or isinstance(record.payload.get('value'),bool):
         raise HTTPException(422,'Choose a numeric current-return claim')
-    if record.ref in {'v3:F8283.A1.vehicle','v3:F8949.H.C6'}:
+    if record.ref in {'v3:F8283.A1.vehicle','v3:F8949.H.C6','v3:SchCA540NR.1.E'}:
         raise HTTPException(422,'Use the judgment decision workflow to record authority and treatment for this claim')
     if record.payload.get('inputs'):
         raise HTTPException(422,'Adjust the source line, not a derived total, to avoid double-counting tax effects')
@@ -162,9 +164,9 @@ def apply_adjustment_review(db,data,record,change,actor,decision,note):
         raise HTTPException(403,'You prepared this claim or its evidence and cannot review your own work')
     if actor['role'] not in {'reviewer','partner'}:
         raise HTTPException(403,'Independent reviewer or partner access required')
-    material=requires_partner(change)
+    material=requires_partner(change,db,packet())
     if material and actor['role']!='partner' and decision=='approved':
-        raise HTTPException(403,'Tax effect exceeds $1,000; independent partner approval required')
+        raise HTTPException(403,f"Tax effect exceeds {standards(db,data)['partner_threshold']}; independent partner approval required")
     refs=change.evidence
     if decision=='approved':
         valid=[]

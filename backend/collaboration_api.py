@@ -130,6 +130,7 @@ def question_view(db,row,client=False):
 
 @router.get('/questions')
 def questions(ref:str|None=None,actor=Depends(identity),db:Session=Depends(session)):
+    if actor['role']!='client':staff(actor,db)
     imported(db)
     query=select(Record).where(Record.packet_id==packet().digest,Record.kind=='question').order_by(Record.id.desc())
     if actor['role']=='client':
@@ -146,8 +147,13 @@ def ask(ref:str,body:QuestionWrite,actor=Depends(staff),db:Session=Depends(sessi
     claim=get_record(db,packet(),ref,body.expected_revision,True)
     if claim.kind!='claim' or claim.payload['version']!='v3':
         raise HTTPException(422,'Ask from a current-return claim')
-    if body.recipient not in {a['id'] for a in packet().data['firm']['client_users']}:
-        raise HTTPException(422,'Select a client recipient')
+    from backend.domain.security import actor_by_id
+    from backend.domain.breadth import as_of
+    recipient=actor_by_id(packet(),body.recipient)
+    if not recipient or recipient['role'] not in {'client','preparer','reviewer','partner'}:
+        raise HTTPException(422,'Select a client or tax-team colleague')
+    if recipient.get('active_from','0000')>as_of(db,packet())[:10]:
+        raise HTTPException(422,'This colleague is not active at the current replay date')
     q=node(db,'question',{'claim_ref':ref,'claim_label':claim.payload['label'],'prompt':body.prompt,
         'recipient':body.recipient,'actor_id':actor['id'],'at':now(),'status':'open'})
     # Asking is review activity, not evidence preparation. Answers get evidence edges when received.
@@ -160,9 +166,12 @@ def ask(ref:str,body:QuestionWrite,actor=Depends(staff),db:Session=Depends(sessi
 @router.post('/questions/{question_ref}/answers')
 def answer(question_ref:str,body:AnswerWrite,actor=Depends(identity),db:Session=Depends(session)):
     if actor['role']!='client':
-        raise HTTPException(403,'Only the assigned client can answer')
+        staff(actor,db)
+        require_preparation(actor)
     imported(db)
     q=question_access(db,question_ref,actor,body.expected_revision,True)
+    if q.payload['recipient']!=actor['id']:
+        raise HTTPException(403,'Only the assigned recipient can answer')
     if q.payload['status']=='resolved':
         raise HTTPException(409,'This question is resolved; ask the firm to open a follow-up')
     decoded=[]
@@ -180,7 +189,7 @@ def answer(question_ref:str,body:AnswerWrite,actor=Depends(identity),db:Session=
     claim=get_record(db,packet(),q.payload['claim_ref'],lock=True)
     written=[]
     try:
-        a=node(db,'client_answer',{'question_ref':q.ref,'text':body.text,'actor_id':actor['id'],'at':now(),'files':[]})
+        a=node(db,'client_answer',{'question_ref':q.ref,'text':body.text,'actor_id':actor['id'],'at':now(),'files':[],'preparers':[actor['id']] if actor['role']!='client' else []})
         files=[]
         for name,data in decoded:
             key=attachments.put(data)
@@ -254,7 +263,7 @@ def decision_view(db,row):
     if status=='approved' and p.get('outcome')=='needs_evidence':
         status='needs_evidence'
     return {'ref':row.ref,'revision':row.revision,**p,'status':status,'reviews':reviews,
-        'claim_revision':claim.revision,'requires_partner':requires_partner(change) if change else False}
+        'claim_revision':claim.revision,'requires_partner':requires_partner(change,db,packet()) if change else False}
 
 
 @router.get('/decisions')
@@ -274,6 +283,8 @@ def decide(ref:str,body:DecisionWrite,actor=Depends(staff),db:Session=Depends(se
     if body.choice not in body.alternatives:
         raise HTTPException(422,'The chosen treatment must be one of the alternatives')
     refs=evidence_refs(packet(),body.evidence,db)
+    if ref=='v3:SchCA540NR.1.E' and not any(r in refs for r in ('D73','doc:D73#page1','ev-1081')):
+        raise HTTPException(422,'The wage allocation decision must cite D73 and reconcile work dates and HSA treatment')
     pending,approved,engine,value=current_values(db,claim,packet())
     if pending:
         raise HTTPException(409,'Resolve the existing proposal before recording a decision')
@@ -300,7 +311,7 @@ def decide(ref:str,body:DecisionWrite,actor=Depends(staff),db:Session=Depends(se
             'engine_total':'F8949.H.total'}
     change=None
     if proposed is not None and (proposed!=Decimal(value) or treatment):
-        if claim.payload.get('inputs'):
+        if claim.payload.get('inputs') and ref!='v3:SchCA540NR.1.E':
             raise HTTPException(422,'Record the correction on the source line, not a derived total')
         category=category_for(packet(),claim)
         effect=estimated_effect(packet(),claim,proposed,category)

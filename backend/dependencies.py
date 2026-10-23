@@ -23,9 +23,13 @@ def identity(request: Request, db: Session = Depends(session)):
         raise HTTPException(401, 'Choose a demo identity first.')
     return actor
 
-def staff(actor=Depends(identity)):
+def staff(actor=Depends(identity), db: Session = Depends(session)):
     if actor['role'] not in STAFF_ROLES:
         raise HTTPException(403, 'Internal workpaper: staff access required.')
+    from backend.domain.breadth import as_of
+    current=as_of(db,packet())
+    if actor.get('active_from','0000')>current[:10]:
+        raise HTTPException(403,'This staff member is not active at the current replay date.')
     return actor
 
 def respond(value, actor, db, subject):

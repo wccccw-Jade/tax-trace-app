@@ -6,6 +6,7 @@ from decimal import Decimal
 from sqlalchemy import select
 from backend.persistence.models import Record, Verification, Adjustment
 from backend.domain.workpaper import evidence_graph, fingerprint
+from backend.domain.policy import standards
 
 NUMBER=r'[\d,]+\.\d{2}'
 LOT=re.compile(r'\b(?P<lot>[NMX]\d+)\s+(?P<description>.*?)\s+[\d.]+\s+sh\s+acquired\s+(?P<acquired>\d{4}-\d{2}-\d{2})\s+sold\s+(?P<sold>\d{4}-\d{2}-\d{2})\s+proceeds\s+(?P<proceeds>'+NUMBER+r')\s+basis\s+(?P<basis>'+NUMBER+r'|\(not reported\))(?P<tail>[^;]*)')
@@ -22,7 +23,8 @@ def sales_checks(db,packet):
                 printed[(doc_id,match['lot'])]={**match.groupdict(),'page':page['page']}
     verifications={}
     for check in db.scalars(select(Verification).join(Record,Record.id==Verification.record_id).where(Record.packet_id==packet.digest,Verification.reversed_at.is_(None)).order_by(Verification.id)):
-        verifications[check.record_id]=check
+        if check.method in standards(db,packet)['verification_types']:
+            verifications[check.record_id]=check
     proposals={a.record_id for a in db.scalars(select(Adjustment).join(Record,Record.id==Adjustment.record_id).where(Record.packet_id==packet.digest,Adjustment.status.in_(['proposed','reopened','approved'])))}
     rows=[]
     for record in records.values():
