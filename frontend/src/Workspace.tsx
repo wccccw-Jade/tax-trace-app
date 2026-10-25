@@ -1,4 +1,4 @@
-import {useEffect,useState} from 'react';
+import {useEffect,useRef,useState} from 'react';
 import {api} from './api';
 import type {Actor} from './types';
 
@@ -51,9 +51,11 @@ function OutsideCard({item,actor,onSave,onOpen}:{item:OutsideItem;actor:Actor;on
 
 type Notice={id:string;title:string;text:string;target:string;seen:boolean};
 export function Notifications({actor,onNavigate}:{actor:Actor;onNavigate:(tab:string)=>void}) {
+  const buttonRef=useRef<HTMLButtonElement>(null);
   const [items,setItems]=useState<Notice[]>([]);const [error,setError]=useState('');const [open,setOpen]=useState(false);
   useEffect(()=>{let live=true;const load=()=>api<{items:Notice[]}>('/workspace/notifications').then(v=>{if(live)setItems(v.items);}).catch(e=>{if(live)setError(e.message);});void load();const timer=window.setInterval(load,15000);return()=>{live=false;window.clearInterval(timer);};},[actor.id]);
-  return <div className="notification-wrap"><button className="secondary" aria-expanded={open} onClick={()=>setOpen(v=>!v)}>Updates <span className="count-label">{items.filter(i=>!i.seen).length}</span></button>{open&&<section className="notification-popover" aria-label="In-app updates"><h2>Workspace updates</h2><p className="muted">Refreshes every 15 seconds.</p>{error&&<p className="error" role="alert">{error}</p>}{!items.length&&<p>No updates right now.</p>}{items.map(i=><article className="history-item" key={i.id}><button className="text-button" onClick={()=>{onNavigate(i.target);setOpen(false);}}>{i.title}</button><p>{i.text}</p>{i.seen?<small>Seen</small>:<button className="secondary" onClick={async()=>{try{await api('/workspace/notifications/seen',json({notification_id:i.id}));setItems(prev=>prev.map(n=>n.id===i.id?{...n,seen:true}:n));}catch(e){setError((e as Error).message);}}}>Mark seen</button>}</article>)}</section>}</div>;
+  useEffect(()=>{if(!open)return;const close=(event:KeyboardEvent)=>{if(event.key==='Escape'){setOpen(false);buttonRef.current?.focus();}};window.addEventListener('keydown',close);return()=>window.removeEventListener('keydown',close);},[open]);
+  return <div className="notification-wrap"><button ref={buttonRef} className="secondary" aria-controls="workspace-updates" aria-expanded={open} onClick={()=>setOpen(v=>!v)}>Updates <span className="count-label">{items.filter(i=>!i.seen).length}</span></button>{open&&<section id="workspace-updates" className="notification-popover" aria-label="In-app updates"><h2>Workspace updates</h2><p className="muted">Refreshes every 15 seconds.</p>{error&&<p className="error" role="alert">{error}</p>}{!items.length&&<p>No updates right now.</p>}{items.map(i=><article className="history-item" key={i.id}><button className="text-button" onClick={()=>{onNavigate(i.target);setOpen(false);}}>{i.title}</button><p>{i.text}</p>{i.seen?<small>Seen</small>:<button className="secondary" onClick={async()=>{try{await api('/workspace/notifications/seen',json({notification_id:i.id}));setItems(prev=>prev.map(n=>n.id===i.id?{...n,seen:true}:n));}catch(e){setError((e as Error).message);}}}>Mark seen</button>}</article>)}</section>}</div>;
 }
 export function WorkspaceSearch({onOpen}:{onOpen:(ref:string)=>void}) {
   const [query,setQuery]=useState('');const [items,setItems]=useState<{ref:string;title:string;kind:string;snippet:string}[]|null>(null);const [error,setError]=useState('');const [busy,setBusy]=useState(false);

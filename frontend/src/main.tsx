@@ -126,7 +126,7 @@ function App() {
     try{
       const next=await api<Trace>('/trace?ref='+encodeURIComponent(ref));
       if(follow&&trace)setTrail(prev=>[...prev,trace]);else setTrail([]);
-      setDetail(next.kind==='claim'?'review':'evidence');setTrace(next);
+      setDetail(next.kind==='claim'&&next.ref.startsWith('v3:')&&typeof next.value.value==='number'?'review':'evidence');setTrace(next);
     }catch(e){setError((e as Error).message);}
   }
   function refreshWork(){
@@ -151,7 +151,7 @@ function App() {
       <nav aria-label="Workspace">{navGroups.map(group=><div className="nav-group" key={group.label}><p className="caption">{group.label}</p>{group.keys.map(key=><button className={tab===key?'selected':''} aria-current={tab===key?'page':undefined} key={key} onClick={()=>navigate(key)}><Icon name={pages[key].icon}/><span>{client?(key==='questions'?'Your questions':'Approve & copies'):pages[key].title}</span>{key==='queue'&&queue.length>0&&<span className="nav-count">{queue.length-done}</span>}</button>)}</div>)}</nav>
       <div className="aside-bottom"><span className="demo-label"><span className="dot"/>Prototype workspace</span><p>Synthetic case study.<br/>Filing actions are simulated.</p></div>
     </aside>
-    <main id="main-content">
+    <main id="main-content" tabIndex={-1}>
       <header className="topbar"><div className="breadcrumb">Workspace <span>/</span> <strong>2025 return</strong></div>{actor&&!client&&<Notifications key={actor.id} actor={actor} onNavigate={navigate}/>}<label className="identity"><span>Demo identity</span><select value={actor?.id||''} onChange={e=>void switchRole(e.target.value)}><option value="" disabled>Choose identity</option>{actors.map(a=><option key={a.id} value={a.id}>{a.name} · {a.role.replaceAll('_',' ')}</option>)}</select></label></header>
       <section className="intro"><div><p className="eyebrow">{client?'YOUR RETURN, TOGETHER':'OKAFOR–LINDQVIST / 2025'}</p><h1>{client?(tab==='filing'?'Approve & download':'Your questions'):pages[tab].title}</h1><p>{client?'Your team will guide you through the information and approvals they need.':pages[tab].description}</p></div><span className="pill">{client?'Client view':'Engine v3 · Working draft'}</span></section>
       {error&&<div role="alert" className="error">{error}</div>}

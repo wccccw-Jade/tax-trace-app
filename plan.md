@@ -1,6 +1,6 @@
 # Miraflores tax workpaper: product and implementation plan
 
-Status: local prototype implemented through Day 7–8; Day 9–10 delivery tasks remain.
+Status: Day 9 local hardening and documents implemented; hosted/browser verification and Day 10 remain.
 Revised: October 23, 2026.
 Scope: one complex household (Okafor-Lindqvist), tax year 2025.
 
@@ -312,13 +312,15 @@ Make every remaining requirement work, even simply:
 
 ### Day 9: harden and write
 
-- [ ] Tests for import integrity, masking, self-review block (preparer vs reviewer activity), sign-off staleness, stale-write conflict, snapshot immutability per submission, readiness inheritance for derived claims, registry formulas reproducing v3, and the computation basis labels.
-- [ ] Once the local prototype is ready, deploy to Heroku with Postgres and private object storage; verify the app link, role switching, and persistence across restart/redeployment.
-- [ ] Backup and restore drill for the database and attachments.
-- [ ] Keyboard, focus and labeled statuses; empty and error states; sales detail stays fast.
-- [ ] One-page core idea and data model (section 2 plus the entity table).
-- [ ] Error report (section 4, finished).
-- [ ] Note on tools and AI use, including how the AI's findings were verified.
+- [x] Tests for import integrity, masking, self-review block (preparer vs reviewer activity), sign-off staleness, stale-write conflict, snapshot immutability per submission, readiness inheritance for derived claims, registry formulas reproducing v3, and the computation basis labels.
+- [ ] Deploy to Heroku with Postgres and private object storage; verify the app link, role switching, and persistence across restart/redeployment. Build/release configuration and private S3 adapter are implemented; target app, bucket and authenticated access are still needed.
+- [x] Backup and restore drill for the database and attachments.
+- [ ] Complete interactive keyboard/visual review. Focus/escape improvements, labeled statuses and empty/error states are implemented; 295-row sales requests measured 82–118 ms locally. Browser/native connection is unavailable, so manual interaction is not claimed verified.
+- [x] One-page core idea and data model (section 2 plus the entity table).
+- [x] Error report (section 4, finished).
+- [x] Note on tools and AI use, including how the AI's findings were verified.
+
+**October 23, 2026:** all 40 domain/API/PostgreSQL tests passed; clean Heroku frontend build hook, dependency check, migration SQL, idempotent release command and live HTTP smoke checks passed. The restore drill verified 11 tables, attachment bytes, saved revision and snapshot protection in disposable databases without changing live work. The one-page PDF was rendered and visually inspected. See [Day 9 status](docs/day-9-status.md), [deployment runbook](docs/heroku-deployment.md), [backup/restore](docs/backup-and-restore.md) and [submission documents](docs/submission/core-idea.md). Deployment and browser review remain explicit gates.
 
 ### Day 10: video and submit
 

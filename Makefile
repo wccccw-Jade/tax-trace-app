@@ -1,5 +1,5 @@
 PYTHON := .venv/bin/python
-.PHONY: install db db-stop db-status db-logs migrate import refresh audit test dev build
+.PHONY: backup backup-drill install db db-stop db-status db-logs migrate import refresh audit test dev build
 install:
 	$(PYTHON) -m pip install -r requirements.txt
 	cd frontend && npm install
@@ -27,3 +27,8 @@ dev:
 	$(PYTHON) scripts/dev.py
 build:
 	cd frontend && npm run build
+
+backup:
+	$(PYTHON) -m scripts.backup create --directory var/backups/backup-$$(date +%Y%m%d-%H%M%S)
+backup-drill:
+	$(PYTHON) -m scripts.backup drill --directory var/backups/drill-$$(date +%Y%m%d-%H%M%S)

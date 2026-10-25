@@ -1,6 +1,6 @@
 # Miraflores workpaper
 
-Day 0–1 foundation, Stories A–E and the Day 7–8 breadth pass for the Okafor–Lindqvist case study. Local development only; no deployment has been performed.
+Day 0–1 foundation, Stories A–E, the Day 7–8 breadth pass and Day 9 local hardening for the Okafor–Lindqvist case study. Local development only; no deployment has been performed.
 
 ## Prerequisites
 
@@ -8,7 +8,7 @@ Day 0–1 foundation, Stories A–E and the Day 7–8 breadth pass for the Okafo
 - Node.js 22.12+ (or Node 24 LTS) and npm for React/Vite.
 - Docker Desktop (running), including Docker Compose. PostgreSQL 17 runs in the `db` container; no native PostgreSQL installation is needed.
 
-Node.js 24 and the frontend dependencies are installed; the TypeScript/Vite production build passed and `frontend/package-lock.json` is available. Docker PostgreSQL is running with the imported packet. All 35 backend/PostgreSQL tests passed, and live HTTP checks verified the frontend/API connection, role switching, masking and database readiness. Browser visual verification remains blocked because Computer Use permission is not granted. Saved source anchors, revisions, sessions and import records were verified after restarting both the app and PostgreSQL.
+Node.js 24 and the frontend dependencies are installed; the TypeScript/Vite production build passed and `frontend/package-lock.json` is available. Docker PostgreSQL is running with the imported packet. All 40 backend/PostgreSQL tests passed, and live HTTP checks verified the frontend/API connection, role switching, masking and database readiness. Browser visual verification remains blocked because Computer Use permission is not granted. Saved source anchors, revisions, sessions and import records were verified after restarting both the app and PostgreSQL.
 
 ## Local setup
 
@@ -149,9 +149,11 @@ The local app and database restart check is reproducible:
 
 This saves a manual source anchor for the Swedish interest field and a local demo session, then verifies their revisions/content and packet counts after restart. Temporary check state stays in ignored `var/`.
 
-## Deployment later
+## Heroku and recovery
 
-Heroku setup is deferred until the prototype is ready. Use Heroku Postgres plus private object storage for attachments; never rely on dyno files for durable data. `DATABASE_URL` and attachment configuration are environment based. No Heroku app, account or paid service was created.
+The repository now includes the Node/Python build hook, Python runtime declaration, `Procfile`, idempotent migration/import release command and private S3-compatible attachment adapter. Production requires S3 storage and database SSL. The target Heroku app, Postgres/bucket configuration and deployment access are still needed; no remote app or paid service has been created.
+
+See [the exact deployment procedure](docs/heroku-deployment.md). `make backup` captures database and referenced private files; `make backup-drill` checks recovery through disposable local databases. See [backup/restore safeguards and the completed drill](docs/backup-and-restore.md).
 
 ## Sources and tools
 
@@ -172,3 +174,14 @@ Restart `make dev`. No additional migration is required beyond `0005`.
 - **Search / Quality review:** clearance-aware, replay-aware search and immutable submitted-copy review. Sam becomes active on January 4, 2027; quality findings never change the frozen return.
 
 See [the walkthrough and limitations](docs/day-7-8-status.md) and [brief coverage checklist](docs/requirement-checklist.md). The live workspace retains genuine open review work and no test approvals are copied into it.
+
+## Day 9: hardening and hand-in documents
+
+All 40 backend/PostgreSQL tests, the clean deployment build hook and local API checks passed. The real restore drill preserved 11 tables, an attachment, revisions and the database snapshot guard without changing the live workspace. Keyboard improvements are implemented, but browser interaction remains unverified because no computer-use surface is connected.
+
+- [Day 9 status and remaining gates](docs/day-9-status.md)
+- [One-page core idea/model PDF](output/pdf/miraflores-core-idea.pdf) and [editable Markdown](docs/submission/core-idea.md)
+- [Final error report with evidence and UI paths](docs/submission/error-report.md)
+- [Tools and AI-use disclosure](docs/submission/tools-and-ai.md)
+
+Restart `make dev` after installing updated requirements. Heroku deployment and the user's personal video remain outstanding.

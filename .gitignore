@@ -10,3 +10,4 @@ node_modules/
 frontend/dist/
 var/
 *.egg-info/
+tmp/

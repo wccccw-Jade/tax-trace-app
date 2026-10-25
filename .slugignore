@@ -1,0 +1,7 @@
+.env
+.env.*
+.venv/
+var/
+tests/
+*.pdf
+.DS_Store

@@ -3,10 +3,11 @@ import secrets
 from fastapi import FastAPI, Depends, HTTPException, Request, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
+from botocore.exceptions import BotoCoreError,ClientError
 from sqlalchemy import select, text
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
-from backend.config import ROOT
+from backend.config import ROOT,settings
 from backend.domain.security import actors, actor_by_id, redact
 from backend.persistence.db import session
 from backend.persistence.models import Record, Edge, DemoSession, AuditEvent
@@ -20,9 +21,15 @@ async def database_error(request, exc):
     from fastapi.responses import JSONResponse
     return JSONResponse(status_code=503, content={'detail':'PostgreSQL is unavailable or migrations are missing. See README setup.'})
 
+@app.exception_handler(BotoCoreError)
+@app.exception_handler(ClientError)
+async def storage_error(request,exc):
+    from fastapi.responses import JSONResponse
+    return JSONResponse(status_code=503,content={'detail':'Private attachment storage is unavailable. Retry or check the storage configuration.'})
+
 @app.get('/api/health')
 def health():
-    return {'status':'ok', 'stage':'day-7-8', 'demo':True}
+    return {'status':'ok', 'stage':'day-9', 'demo':True}
 
 @app.get('/api/ready')
 def ready(db: Session = Depends(session)):
@@ -50,7 +57,7 @@ def switch(body: Switch, response: Response, request: Request, db: Session = Dep
     db.add(DemoSession(token=token, actor_id=actor['id']))
     db.add(AuditEvent(actor_id=actor['id'], action='demo_role_selected', subject='session'))
     db.commit()
-    response.set_cookie('demo_session', token, httponly=True, samesite='strict')
+    response.set_cookie('demo_session', token, httponly=True, samesite='strict', secure=settings.app_env=='production')
     return {'id': actor['id'], 'name': actor['name'], 'role': actor['role'], 'sensitive_data_clearance':actor.get('sensitive_data_clearance',False), 'demo':True}
 
 @app.get('/api/session')
